@@ -1,8 +1,0 @@
-# Don't track content of these folders
-depth/
-rgb/
-depth_gradients/
-__pycache__/
-.idea
-.ipynb_checkpoints/
-.gitignore (END)
