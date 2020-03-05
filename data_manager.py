@@ -49,6 +49,7 @@ class Hidden_Spaces_Edges_Dataset(Dataset):
         self.y_data_path = y_data_path
         self.transform = transform
         self.loaded_to_RAM_images = {}
+        self.loaded_to_RAM_gardients = {}
 
     def __load_image_and_maybe_transform__(self, path):
         if path not in self.loaded_to_RAM_images: # Saves to RAM, to prevent a hard drive bottleneck.
@@ -57,11 +58,16 @@ class Hidden_Spaces_Edges_Dataset(Dataset):
                 self.loaded_to_RAM_images[path] = self.transform(self.loaded_to_RAM_images[path])
         return self.loaded_to_RAM_images[path]
 
+    def __load_gardient__(self, path):
+        if path not in self.loaded_to_RAM_gardients: # Saves to RAM, to prevent a hard drive bottleneck.
+            self.loaded_to_RAM_gardients[path] = torch.from_numpy(np.load(path + ".npy"))
+        return self.loaded_to_RAM_gardients[path]
+
     def __getitem__(self, index):
         X_rgb = self.__load_image_and_maybe_transform__(path=self.rgb_data_path + str(index))
         X_depth = self.__load_image_and_maybe_transform__(path=self.depth_data_path + str(index))
-        Y_x = torch.from_numpy(np.load(self.x_data_path + str(index) + ".npy"))
-        Y_y = torch.from_numpy(np.load(self.y_data_path + str(index) + ".npy"))
+        Y_x = self.__load_gardient__(self.x_data_path + str(index))
+        Y_y = self.__load_gardient__(self.y_data_path + str(index))
         return X_rgb, X_depth, (Y_x, Y_y)
 
     def __len__(self):
