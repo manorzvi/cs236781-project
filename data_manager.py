@@ -129,7 +129,7 @@ def load_Hidden_Spaces_Edges_train_and_test_datasets():
     # # train = torch.utils.data.TensorDataset(train_x_rgb_dataset, train_x_depth_dataset, train_y_x_dataset, train_y_y_dataset)
     # train_loader = torch.utils.data.DataLoader(dataset=train, batch_size=64, shuffle=True, num_workers=0)
     # return train_DataLoader, test_DataLoader
- 
+
 if __name__ == '__main__':
     (train_DataLoader, test_DataLoader) = load_Hidden_Spaces_Edges_train_and_test_datasets()
     for batch_idx, (X_rgb, X_depth, (Y_x, Y_y)) in enumerate(train_DataLoader):
