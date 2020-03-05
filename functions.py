@@ -36,11 +36,15 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1, scale
     :param save_dir: save the results in that directory (default: None)
     :return: gradient maps for each depth map specified
     '''
+    x_save_dir = save_dir + '/x'
+    y_save_dir = save_dir + '/y'
     if to_save:
-        if os.path.exists(save_dir):
-            shutil.rmtree(save_dir)
-        os.mkdir(save_dir)
-
+        def delete_if_exists_and_create_folder(dir):
+            if os.path.exists(dir):
+                shutil.rmtree(dir)
+            os.mkdir(dir)
+        delete_if_exists_and_create_folder(x_save_dir)
+        delete_if_exists_and_create_folder(y_save_dir)
     depth_abs_fnames = [os.path.join(depth_dir,f) for f in depth_fnames]
     ret_val = {}
     for i,fname in enumerate(depth_abs_fnames):
@@ -50,8 +54,8 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1, scale
         grad_x = cv2.Sobel(img_r,cv2.CV_64F,gradient_degree,0,ksize=ksize)
         grad_y = cv2.Sobel(img_r,cv2.CV_64F,0,gradient_degree,ksize=ksize)
         if to_save:
-            np.save(os.path.join(save_dir, os.path.basename(fname)[:-4]+'.x'),grad_x)
-            np.save(os.path.join(save_dir, os.path.basename(fname)[:-4]+'.y'),grad_y)
+            np.save(os.path.join(x_save_dir, os.path.basename(fname)[:-4]), grad_x)
+            np.save(os.path.join(y_save_dir, os.path.basename(fname)[:-4]), grad_y)
         ret_val[os.path.basename(fname)[:-4]] = {'x' : grad_x,
                                                  'y' : grad_y}
         print('done.')
@@ -173,4 +177,4 @@ if __name__ == '__main__':
     depth_fnames.sort()
 
     grads = calc_depth_grads(depth_fnames, depth_dir,
-                             to_save=True, save_dir=grad_dir, ksize=5, gradient_degree=1)
+                             ksize=5, gradient_degree=1, to_save=True, save_dir=grad_dir)
