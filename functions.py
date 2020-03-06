@@ -24,7 +24,57 @@ def plot_samples(samples_fnames, depth_dir, rgb_dir,
     plt.tight_layout(True)
     plt.show()
 
-def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1, scale=0.1, to_save=False, save_dir=None):
+
+def scaling(img,scaling_factor):
+
+    width  = int(img.shape[1] * scaling_factor)
+    height = int(img.shape[0] * scaling_factor)
+
+    dsize = (width, height)
+
+    # resize image
+    return cv2.resize(img, dsize)
+
+
+def one_one_normalization(data):
+    data = 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
+    return data
+
+
+def alltogether_normalization(grads):
+    for i, (k, v) in enumerate(grads.items()):
+        if i == 0:
+            datax = v['x']
+            datay = v['y']
+        else:
+            datax = np.concatenate((datax, v['x']), axis=0)
+            datay = np.concatenate((datay, v['y']), axis=0)
+
+        print(f'-{i}) |datax|={datax.shape}, |datay|={datay.shape}')
+
+    datax = one_one_normalization(datax)
+    datay = one_one_normalization(datay)
+
+    datax = np.split(datax, len(grads), axis=0)
+    datay = np.split(datay, len(grads), axis=0)
+
+    for i, (dx, dy, v) in enumerate(zip(datax, datay, grads.values())):
+        v['x'] = dx
+        v['y'] = dy
+
+    return grads
+
+
+def eachone_normalization(grads):
+    for i, (k, v) in enumerate(grads.items()):
+        v['x'] = one_one_normalization(v['x'])
+        v['y'] = one_one_normalization(v['y'])
+    return grads
+
+
+def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1,
+                     scale=0.1, to_save=False, save_dir=None,
+                     normalization=None):
     '''
     calculate gradients of the depth map using Sobel/Scharr Convolution filters.
     :param depth_fnames: list of depth maps file names
@@ -36,15 +86,22 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1, scale
     :param save_dir: save the results in that directory (default: None)
     :return: gradient maps for each depth map specified
     '''
-    x_save_dir = save_dir + '/x'
-    y_save_dir = save_dir + '/y'
+
+    assert normalization in [None,'alltogether','eachone'], 'if not None, normalization can be one of the follows:\n' \
+                                                            '1) alltogether - normalize the whole data-set\n' \
+                                                            '2) eachone - normalize each sample independently'
+
     if to_save:
+        x_save_dir = save_dir + '/x'
+        y_save_dir = save_dir + '/y'
         def delete_if_exists_and_create_folder(dir):
             if os.path.exists(dir):
+                print(f'{dir} exist! will remove and re-create.')
                 shutil.rmtree(dir)
             os.mkdir(dir)
         delete_if_exists_and_create_folder(x_save_dir)
         delete_if_exists_and_create_folder(y_save_dir)
+
     depth_abs_fnames = [os.path.join(depth_dir,f) for f in depth_fnames]
     ret_val = {}
     for i,fname in enumerate(depth_abs_fnames):
@@ -53,24 +110,28 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1, scale
         img_r = scaling(img,scale)
         grad_x = cv2.Sobel(img_r,cv2.CV_64F,gradient_degree,0,ksize=ksize)
         grad_y = cv2.Sobel(img_r,cv2.CV_64F,0,gradient_degree,ksize=ksize)
+        # grad_x = one_one_normalization(grad_x)
+        # grad_y = one_one_normalization(grad_y)
         if to_save:
             np.save(os.path.join(x_save_dir, os.path.basename(fname)[:-4]), grad_x)
             np.save(os.path.join(y_save_dir, os.path.basename(fname)[:-4]), grad_y)
         ret_val[os.path.basename(fname)[:-4]] = {'x' : grad_x,
                                                  'y' : grad_y}
         print('done.')
+
+    if normalization:
+        print('Minus One-One Normalization:\n'
+              '---------------------------')
+        if normalization == 'alltogether':
+            print('All-Together Normalization ... ')
+            ret_val = alltogether_normalization(ret_val)
+            print('Done.')
+        if normalization == 'eachone':
+            print('Each-One Normalization ... ')
+            ret_val = eachone_normalization(ret_val)
+            print('Done.')
+
     return ret_val
-
-
-def scaling(img,scaling_factor):
-
-    width  = int(img.shape[1] * scaling_factor)
-    height = int(img.shape[0] * scaling_factor)
-
-    dsize = (width, height)
-
-    # resize image
-    return cv2.resize(img, dsize)
 
 
 def plot_samples_grads(grads, figsize=(8, 8)):
@@ -167,14 +228,14 @@ def plot_samples_diffs(diffs, figsize=(8, 8)):
 
 if __name__ == '__main__':
     depth_dir = 'depth'
-    grad_dir = 'depth_gradients'
+    grad_dir  = 'depth_gradients'
 
-    pwd = os.getcwd()
+    pwd       = os.getcwd()
     depth_dir = os.path.join(pwd, depth_dir)
-    grad_dir = os.path.join(pwd, grad_dir)
+    grad_dir  = os.path.join(pwd, grad_dir)
 
     depth_fnames = os.listdir(depth_dir)
     depth_fnames.sort()
 
     grads = calc_depth_grads(depth_fnames, depth_dir,
-                             ksize=5, gradient_degree=1, to_save=True, save_dir=grad_dir)
+                             ksize=5, gradient_degree=1, to_save=True, save_dir=grad_dir, normalization='alltogether')
