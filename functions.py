@@ -4,6 +4,9 @@ import numpy as np
 import os
 import shutil
 
+from torch.nn import init
+
+
 
 def denorm(x):
     out = (x + 1) / 2
@@ -22,6 +25,38 @@ def torch2np_u8(x):
     x = x.astype(np.uint8)
     return x
 
+def init_weights(net, init_type='normal', init_gain=0.02):
+    net = net
+    def init_func(m):
+        classname = m.__class__.__name__
+        print(f'\t\t[debug] - classname={classname}')
+        if hasattr(m, 'weight') and ('Conv' in classname or 'Linear' in classname != -1):
+            if init_type == 'normal':
+                init.normal_(m.weight.data, 0.0, init_gain)
+            elif init_type == 'xavier':
+                print(f"\t\t[debug] - initialize weight")
+                init.xavier_normal_(m.weight.data, gain=init_gain)
+            elif init_type == 'kaiming':
+                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+            elif init_type == 'orthogonal':
+                init.orthogonal_(m.weight.data, gain=init_gain)
+            elif init_type == 'pretrained':
+                print(f'\t\tinit_type={init_type} -> pass')
+                pass
+            else:
+                raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+
+            if hasattr(m, 'bias') and m.bias is not None and init_type != 'pretrained':
+                print(f"\t\t[debug] - initialize bias")
+                init.constant_(m.bias.data, 0.0)
+        elif 'BatchNorm2d' in classname:
+            print(f"\t\t[debug] - initialize weight&bias")
+            init.normal_(m.weight.data, 1.0, init_gain)
+            init.constant_(m.bias.data, 0.0)
+
+    print('Network initialize with %s ... \n' % init_type,end='')
+    net.apply(init_func)
+    print('Done.')
 
 # NOTE: Following functions are legacy and deprecated. DON'T USE! (manorz, 03/07/20)
 #  ---------------------------------------------------------------------------------
