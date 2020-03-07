@@ -16,7 +16,6 @@ def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
 
     # [(img0, cls0), ..., # (imgN, clsN)]
     first_n = list(itertools.islice(dataset, start, stop))
-
     return rgbd_gradients_dataset_plot(first_n, **kw)
 
 def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hspace=0.2, cmap=None):
@@ -30,8 +29,8 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
     for i in range(len(samples)):
         rgb   = samples[i]['rgb']
         depth = samples[i]['depth']
-        x     = samples[i]['x']
-        y     = samples[i]['y']
+        x     = samples[i]['x'].squeeze(0)
+        y     = samples[i]['y'].squeeze(0)
 
         rgb   = torch2np_u8(rgb)
         depth = torch2np_u8(depth)
