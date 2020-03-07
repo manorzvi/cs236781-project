@@ -1,7 +1,9 @@
 # Don't track content of these folders
+data/
 depth/
 rgb/
 depth_gradients/
+raw_datasets/
 __pycache__/
 .idea
 .ipynb_checkpoints/

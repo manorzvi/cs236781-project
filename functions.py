@@ -4,6 +4,28 @@ import numpy as np
 import os
 import shutil
 
+
+def denorm(x):
+    out = (x + 1) / 2
+    return out.clamp(0, 1)
+
+def torch2np_u8(x):
+    if len(x.shape) == 4: # Squeeze the batch dimension if exist
+        assert x.shape[0] == 1, "Non-empy batch dimension (don't know which sample to pick)"
+        x = x.squeeze()
+    if x.shape[0] == 1: # Squeeze single color channel
+        x = x.squeeze()
+    else:
+        x = x.permute((1,2,0))
+    x = 255*denorm(x)
+    x = x.cpu().numpy()
+    x = x.astype(np.uint8)
+    return x
+
+
+# NOTE: Following functions are legacy and deprecated. DON'T USE! (manorz, 03/07/20)
+#  ---------------------------------------------------------------------------------
+
 def plot_samples(samples_fnames, depth_dir, rgb_dir,
                  rows=2, cols=2, figsize=(8,8), alpha=1):
     depth_abs_fnames = [os.path.join(depth_dir,f) for f in samples_fnames]
@@ -92,15 +114,10 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1,
                                                             '2) eachone - normalize each sample independently'
 
     if to_save:
-        x_save_dir = save_dir + '/x'
-        y_save_dir = save_dir + '/y'
-        def delete_if_exists_and_create_folder(dir):
-            if os.path.exists(dir):
-                print(f'{dir} exist! will remove and re-create.')
-                shutil.rmtree(dir)
-            os.mkdir(dir)
-        delete_if_exists_and_create_folder(x_save_dir)
-        delete_if_exists_and_create_folder(y_save_dir)
+        x_dir = os.path.join(save_dir,'x')
+        y_dir = os.path.join(save_dir,'y')
+        os.mkdir(x_dir)
+        os.mkdir(y_dir)
 
     depth_abs_fnames = [os.path.join(depth_dir,f) for f in depth_fnames]
     ret_val = {}
@@ -113,8 +130,8 @@ def calc_depth_grads(depth_fnames, depth_dir, ksize=-1, gradient_degree=1,
         # grad_x = one_one_normalization(grad_x)
         # grad_y = one_one_normalization(grad_y)
         if to_save:
-            np.save(os.path.join(x_save_dir, os.path.basename(fname)[:-4]), grad_x)
-            np.save(os.path.join(y_save_dir, os.path.basename(fname)[:-4]), grad_y)
+            np.save(os.path.join(x_dir, os.path.basename(fname)[:-4]), grad_x)
+            np.save(os.path.join(y_dir, os.path.basename(fname)[:-4]), grad_y)
         ret_val[os.path.basename(fname)[:-4]] = {'x' : grad_x,
                                                  'y' : grad_y}
         print('done.')
@@ -152,90 +169,18 @@ def plot_samples_grads(grads, figsize=(8, 8)):
     plt.show()
 
 
-def calc_pixelwise_diffs(img):
-    diff_x = np.zeros_like(img)
-    diff_y = np.zeros_like(img)
-
-    directions = ['up', 'down', 'right', 'left']
-
-    for i in range(1, img.shape[0] - 1):
-        for j in range(1, img.shape[1] - 1):
-            pix = img[i, j]
-            for dir in directions:
-                if dir == 'up':
-                    if pix > img[i - 1, j]:
-                        continue
-                    else:
-                        diff_y[i, j] += pix - img[i - 1, j]
-                if dir == 'down':
-                    if pix > img[i + 1, j]:
-                        continue
-                    else:
-                        diff_y[i, j] += img[i + 1, j] - pix
-                if dir == 'right':
-                    if pix > img[i, j + 1]:
-                        continue
-                    else:
-                        diff_x[i, j] += img[i, j + 1] - pix
-                if dir == 'left':
-                    if pix > img[i, j - 1]:
-                        continue
-                    else:
-                        diff_x[i, j] += pix - img[i, j - 1]
-    return diff_x,diff_y
-
-
-def calc_diffs(data_fnames,data_dir, scale=0.1, to_save=False, save_dir=None):
-
-    if to_save:
-        if os.path.exists(save_dir):
-            shutil.rmtree(save_dir)
-        os.mkdir(save_dir)
-
-    data_abs_fnames = [os.path.join(data_dir, f) for f in data_fnames]
-    ret_val = {}
-
-    for i,fname in enumerate(data_abs_fnames):
-        img = cv2.imread(fname, 0)
-        img = scaling(img, scale)
-        diff_x, diff_y = calc_pixelwise_diffs(img)
-        ret_val[os.path.basename(fname)[:-4]] = {'x' : diff_x,
-                                                 'y' : diff_y}
-        if to_save:
-            np.save(os.path.join(save_dir, os.path.basename(fname)[:-4]+'.x'),diff_x)
-            np.save(os.path.join(save_dir, os.path.basename(fname)[:-4]+'.y'),diff_y)
-
-    return ret_val
-
-
-def plot_samples_diffs(diffs, figsize=(8, 8)):
-    nrows = int(np.sqrt(len(diffs)))
-    ncols = int(np.sqrt(len(diffs)))
-    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, subplot_kw={'aspect': 1})
-
-    for (i, axi), (k, v) in zip(enumerate(ax.flat), diffs.items()):
-        X, Y = np.meshgrid(np.arange(v['x'].shape[1]), np.arange(v['x'].shape[0]))
-        U = v['x']
-        V = v['y']
-        axi.quiver(X, Y, U, V, pivot='tip', units='xy')
-        rowid = i // ncols
-        colid = i % ncols
-        axi.set_title("(" + str(rowid) + "," + str(colid) + ") Image: " + k)
-
-    plt.tight_layout(True)
-    plt.show()
-
-
 if __name__ == '__main__':
+    data_dir  = 'data/nyuv2'
     depth_dir = 'depth'
-    grad_dir  = 'depth_gradients'
+    save_dir  = 'data/nyuv2'
 
     pwd       = os.getcwd()
-    depth_dir = os.path.join(pwd, depth_dir)
-    grad_dir  = os.path.join(pwd, grad_dir)
+    data_dir  = os.path.join(pwd,      data_dir)
+    depth_dir = os.path.join(data_dir, depth_dir)
+    save_dir  = data_dir
 
     depth_fnames = os.listdir(depth_dir)
     depth_fnames.sort()
 
     grads = calc_depth_grads(depth_fnames, depth_dir,
-                             ksize=5, gradient_degree=1, to_save=True, save_dir=grad_dir, normalization='alltogether')
+                             ksize=5, gradient_degree=1, to_save=True, save_dir=save_dir, normalization='alltogether')
