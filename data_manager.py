@@ -27,6 +27,7 @@ test_rgb_data_path = test_data_path + rgb_data_dir_name
 test_depth_data_path = test_data_path + depth_data_dir_name
 test_x_data_path = test_data_path + x_data_dir_name
 test_y_data_path = test_data_path + y_data_dir_name
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def number_of_files_in_folder(folder_path):
     return len(next(os.walk(folder_path))[2])
@@ -55,12 +56,12 @@ class Hidden_Spaces_Edges_Dataset(Dataset):
         if path not in self.loaded_to_RAM_images: # Saves to RAM, to prevent a hard drive bottleneck.
             self.loaded_to_RAM_images[path] = Image.open(path + ".png")
             if self.transform:
-                self.loaded_to_RAM_images[path] = self.transform(self.loaded_to_RAM_images[path])
+                self.loaded_to_RAM_images[path] = self.transform(self.loaded_to_RAM_images[path]).to(device)
         return self.loaded_to_RAM_images[path]
 
     def __load_gardient__(self, path):
         if path not in self.loaded_to_RAM_gardients: # Saves to RAM, to prevent a hard drive bottleneck.
-            self.loaded_to_RAM_gardients[path] = torch.from_numpy(np.load(path + ".npy"))
+            self.loaded_to_RAM_gardients[path] = torch.from_numpy(np.load(path + ".npy")).to(device)
         return self.loaded_to_RAM_gardients[path]
 
     def __getitem__(self, index):
@@ -68,7 +69,7 @@ class Hidden_Spaces_Edges_Dataset(Dataset):
         X_depth = self.__load_image_and_maybe_transform__(path=self.depth_data_path + str(index))
         Y_x = self.__load_gardient__(self.x_data_path + str(index))
         Y_y = self.__load_gardient__(self.y_data_path + str(index))
-        return X_rgb, X_depth, (Y_x, Y_y)
+        return (X_rgb, X_depth, (Y_x, Y_y))
 
     def __len__(self):
         return self.len
