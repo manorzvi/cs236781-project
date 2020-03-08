@@ -26,8 +26,8 @@ def calc_grads(img: torch.Tensor, ksize=5, grads_degree=1, normalization=True):
     grad_x = np.expand_dims(grad_x, axis=2)
     grad_y = np.expand_dims(grad_y, axis=2)
 
-    grad_x = T.ToTensor()(grad_x)
-    grad_y = T.ToTensor()(grad_y)
+    grad_x = T.ToTensor()(grad_x).type(torch.float32)
+    grad_y = T.ToTensor()(grad_y).type(torch.float32)
 
     return grad_x,grad_y
 

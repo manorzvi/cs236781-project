@@ -2,8 +2,12 @@ import torch
 from torchvision import models
 import numpy as np
 import torch.nn as nn
+import torch.optim as optim
+from torch.optim import lr_scheduler
+
 from copy import deepcopy
 from functions import init_weights
+from torch.nn import DataParallel
 
 def make_encoder_cbr(names: list,model_dict: dict,bn_dim: float,
                      existing_layer=None, bn_momentum=0.1):
@@ -247,42 +251,60 @@ class SpecialFuseNet(nn.Module):
 
 
 class SpecialFuseNetModel(nn.Module):
-    def __init__(self, device=None, rgb_size=None,depth_size=None,grads_size=None):
+    def __init__(self, device=None, rgb_size=None,depth_size=None,grads_size=None,
+                 mode='train',seed=42, optimizer=None, scheduler=None):
+
         assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
+        assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
+        assert mode in ['train', 'test'], "mode neither 'train' nor 'test'"
         assert isinstance(device, torch.device), "Please provide device as torch.device instance"
+
+        torch.manual_seed(seed)
 
         super().__init__()
 
         self.rgb_size   = rgb_size
         self.depth_size = depth_size
         self.grads_size = grads_size
+        self.mode       = mode
 
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         self.net = SpecialFuseNet()
         self._check_features()
         self.initialize()
+        self.net = DataParallel(self.net).to(self.device)
+
+        self.loss_func = nn.MSELoss()
+
+        if self.mode == 'train':
+            if optimizer:
+                self.optimizer = optimizer
+            else:
+                lr           = 0.001 # HyperParameters from the paper
+                momentum     = 0.9
+                weight_decay = 0.0005
+                print(f'[debug] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
+                self.optimizer = optim.SGD(self.net.parameters(),
+                                           lr=lr, momentum=momentum, weight_decay=weight_decay)
+            if scheduler:
+                self.scheduler = scheduler
+            else:
+                self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.1)
+
+
+
 
     def initialize(self, init_type='xavier', init_gain=0.02):
         self.net.to(self.device)
-        print('[debug] - in initialize')
+
+        # TODO: Not sure about that implementation.
+        #  It don't take care about the order of the layers (importent for Xavier). (manorz, 03/08/20)
         for child_name, child in self.net.named_children():
-            print(f'[debug] - child={child_name}')
-            if child_name in self.net.need_initialization:
-                for grandchild in child.children():
+            # print(f'[debug] - child={child_name}')
+            if child_name in self.net.need_initialization: # CBR-s in the Decoder
+                for grandchild in child.children(): # Go through the Sequential
                     init_weights(grandchild, init_type, init_gain=init_gain)
-            else:
-                pass
-
-            # if root_child in self.net.need_initialization:
-            #     for children in root_child.children():
-            #         print(f'\t[debug] - children={children}')
-            #         init_weights(children, init_type, init_gain=init_gain)
-            # else:
-            #     for children in root_child.children():
-            #         print(f'\t[debug] - children={children}')
-            #         init_weights(children, "pretrained", init_gain=init_gain)  # For BatchNorms
-
 
     def _check_features(self):
         device = next(self.parameters()).device
@@ -295,9 +317,15 @@ class SpecialFuseNetModel(nn.Module):
             assert tuple(grads_output.shape[1:]) == two_grads_size, f"Input gradients does not match in size to Output gradients\n" \
                                                                     f"(|{self.grads_size}|!=|{tuple(grads_output.shape[1:])}|)"
 
-
     def forward(self, rgb_batch, depth_batch):
         return self.net(rgb_batch, depth_batch)
+
+    def loss(self,ground_truth_grads: torch.Tensor, approximated_grads: torch.Tensor):
+        print(f'[debug] - shapes: |tags|={ground_truth_grads.shape}, |output|={approximated_grads.shape}')
+        assert ground_truth_grads.shape == approximated_grads.shape
+        return self.loss_func(approximated_grads, ground_truth_grads)
+
+
 
 
 
