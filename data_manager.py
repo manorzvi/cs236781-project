@@ -33,10 +33,11 @@ def calc_grads(img: torch.Tensor, ksize=5, grads_degree=1, normalization=True):
 
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, transforms=None):
+    def __init__(self, root, transforms_rgb=None, transforms_depth=None):
 
         self.root       = root
-        self.transforms = transforms
+        self.transforms_rgb = transforms_rgb
+        self.transforms_depth = transforms_depth
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -76,9 +77,10 @@ class rgbd_gradients_dataset(Dataset):
         rgb   = Image.open(rgb_path)
         d     = Image.open(d_path)
 
-        if self.transforms:
-            rgb = self.transforms(rgb)
-            d   = self.transforms(d)
+        if self.transforms_rgb:
+            rgb = self.transforms_rgb(rgb)
+        if self.transforms_depth:
+            d   = self.transforms_depth(d)
 
         x,y = calc_grads(d)
 
@@ -91,8 +93,8 @@ class rgbd_gradients_dataset(Dataset):
         return self.len
 
 
-def rgbd_gradients_dataloader(root, train_test_ration, batch_size, num_workers, transforms=None):
-    rgbd_grads_ds = rgbd_gradients_dataset(root, transforms=transforms)
+def rgbd_gradients_dataloader(root, train_test_ration, batch_size, num_workers, transforms_rgb=None, transforms_depth=None):
+    rgbd_grads_ds = rgbd_gradients_dataset(root, transforms_rgb=transforms_rgb, transforms_depth=transforms_depth)
     split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ration)),
                      int(np.floor(len(rgbd_grads_ds) * (1-train_test_ration)))]
 
