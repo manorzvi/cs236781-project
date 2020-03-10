@@ -275,8 +275,13 @@ class SpecialFuseNetModel(nn.Module):
         self.initialize()
         self.net = DataParallel(self.net).to(self.device)
 
-        self.loss_func = nn.MSELoss()
+#         self.loss_func = nn.MSELoss()
+        def SpecialFuseNetModelLoss(output, target):
+            loss = torch.mean(torch.pow(torch.norm(torch.sub(output, target), dim=1), 2))
+            return loss
 
+        self.loss_func = SpecialFuseNetModelLoss
+        
         if self.mode == 'train':
             if optimizer:
                 self.optimizer = optimizer
@@ -324,8 +329,3 @@ class SpecialFuseNetModel(nn.Module):
         print(f'[debug] - shapes: |tags|={ground_truth_grads.shape}, |output|={approximated_grads.shape}')
         assert ground_truth_grads.shape == approximated_grads.shape
         return self.loss_func(approximated_grads, ground_truth_grads)
-
-
-
-
-
