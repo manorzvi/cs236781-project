@@ -12,12 +12,17 @@ def one_one_normalization(data):
     return 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
 
 
-def calc_grads(img: torch.Tensor, ksize=5, grads_degree=1, normalization=True):
+def calc_grads(img: torch.Tensor, grads_degree=1, normalization=False):
     assert isinstance(img,torch.Tensor)
+    ksizes_and_weights = [{"ksize": 3, "weight": 0.7},
+                          {"ksize": 5, "weight": 0.3}]
 
     img_np = img.cpu().numpy().squeeze()
-    grad_x = cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksize)
-    grad_y = cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksize)
+    grad_x = np.zeros(img_np.shape, dtype=np.float64)
+    grad_y = np.zeros(img_np.shape, dtype=np.float64)
+    for ksize_and_weight in ksizes_and_weights:
+        grad_x = np.add(grad_x, ksize_and_weight["weight"] * cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksize_and_weight["ksize"]))
+        grad_y = np.add(grad_y, ksize_and_weight["weight"] * cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksize_and_weight["ksize"]))
 
     if normalization:
         grad_x = one_one_normalization(grad_x)
