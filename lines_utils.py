@@ -4,6 +4,7 @@ from numpy import ones, vstack
 from numpy.linalg import lstsq
 from shapely.geometry import LineString
 
+# Returns a CONTINOUS line that goes from one 2D point to another 2D point.
 def get_line(x1, y1, x2, y2):
     points = []
     issteep = abs(y2 - y1) > abs(x2 - x1)
@@ -38,39 +39,40 @@ def get_line(x1, y1, x2, y2):
         points.reverse()
     return points
 
+# # Returns a CONTINOUS line that goes from one 2D point to another 2D point.
+# def bresenham_line(x0, y0, x1, y1):
+#     steep = abs(y1 - y0) > abs(x1 - x0)
+#     if steep:
+#         x0, y0 = y0, x0
+#         x1, y1 = y1, x1
+#     switched = False
+#     if x0 > x1:
+#         switched = True
+#         x0, x1 = x1, x0
+#         y0, y1 = y1, y0
+#     if y0 < y1:
+#         ystep = 1
+#     else:
+#         ystep = -1
+#     deltax = x1 - x0
+#     deltay = abs(y1 - y0)
+#     error = -deltax / 2
+#     y = y0
+#     line = []
+#     for x in range(x0, x1 + 1):
+#         if steep:
+#             line.append((y,x))
+#         else:
+#             line.append((x,y))
+#         error = error + deltay
+#         if error > 0:
+#             y = y + ystep
+#             error = error - deltax
+#     if switched:
+#         line.reverse()
+#     return line
 
-def bresenham_line(x0, y0, x1, y1):
-    steep = abs(y1 - y0) > abs(x1 - x0)
-    if steep:
-        x0, y0 = y0, x0
-        x1, y1 = y1, x1
-    switched = False
-    if x0 > x1:
-        switched = True
-        x0, x1 = x1, x0
-        y0, y1 = y1, y0
-    if y0 < y1:
-        ystep = 1
-    else:
-        ystep = -1
-    deltax = x1 - x0
-    deltay = abs(y1 - y0)
-    error = -deltax / 2
-    y = y0
-    line = []
-    for x in range(x0, x1 + 1):
-        if steep:
-            line.append((y,x))
-        else:
-            line.append((x,y))
-        error = error + deltay
-        if error > 0:
-            y = y + ystep
-            error = error - deltax
-    if switched:
-        line.reverse()
-    return line
-
+# Returns a rotation matrix for 2D space, made out of a angle represented using radians.
 def get_2d_rotation_matrix(radians):
     c, s = np.cos(radians), np.sin(radians)
     return np.array(((c, -s), (s, c)))
@@ -134,7 +136,8 @@ def get_2d_rotation_matrix(radians):
 #     # # print(point1)
 #     # return (point0, point1)
 
-def line_intersection(line, border, side):
+# Returns the intersection point between 2 lines, line and border are both lines, where each is made out of 2 2D points.
+def line_intersection(line, border):
     xdiff = (line[0][0] - line[1][0], border[0][0] - border[1][0])
     ydiff = (line[0][1] - line[1][1], border[0][1] - border[1][1])
 
@@ -152,5 +155,5 @@ def line_intersection(line, border, side):
 
 if __name__ == '__main__':
     # a = line_intersection(line1=[(0, 0), (5.001, 0)], line2=[(0, 5), (10, -5)])
-    a = line_intersection(line=([1, 1], [1.1920960396528244, 1.105015255510807]), border=([63, 0], [63, 63]), side="down")
+    a = line_intersection(line=([1, 1], [1.1920960396528244, 1.105015255510807]), border=([63, 0], [63, 63]))
     s = 1

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import math
 import copy
 from functions import torch2np_u8
-from lines_utils import line_intersection, get_line, bresenham_line, get_2d_rotation_matrix
+from lines_utils import line_intersection, get_line, get_2d_rotation_matrix#, bresenham_line
 
 def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
     if random_start:
@@ -32,14 +32,14 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         rgb   = torch2np_u8(rgb)
         depth = torch2np_u8(depth)
 
-        # axes[i, 0].imshow(rgb,   cmap=cmap)
         axes[i, 1].imshow(depth, cmap=cmap)
-        axes[i, 4].imshow(depth, cmap=cmap)
+        axes[i, 4].imshow(depth, cmap=cmap) # NOTHING HERE, just to keep the plottings close, to prevent the annoying bottom scroller.
 
         X,Y = np.meshgrid(np.arange(x.shape[1]), np.arange(x.shape[0]))
         axes[i, 3].quiver(X, Y, x, y, pivot='tip', units='xy')
-        axes[i, 3].set_ylim(axes[i, 3].get_ylim()[::-1])
+        axes[i, 3].set_ylim(axes[i, 3].get_ylim()[::-1]) # Transpose, to look like the original RGB and Depth images.
 
+        # Attempt to use only the longest gradients
         # # percentage_of_lengths_to_use = 0.25
         # gardient_lengths = []
         # for j in range(x.shape[0]):
@@ -51,22 +51,23 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         # # gardient_lengths.sort()
         # # gardient_lengths = gardient_lengths[-int(percentage_of_lengths_to_use * len(gardient_lengths)):]
 
+        # Creates the navigation map/image by shooting "navigation" rays from each (x, y) pixel, using that pixel's (x_gardient, y_gardient) values.
+        # The ray fades away by:
+        # Distance from it's origin.
+        # Anti-gardient pixels along it's way. (Gardients who point to the opposite direction of the gardient)
         navigation_image = np.zeros(x.shape, dtype=np.float64)
         for j in range(2, navigation_image.shape[0] - 2):
             for k in range(2, navigation_image.shape[1] - 2):
                 x_gardient = x[j][k]
                 y_gardient = y[j][k]
-                # if x_gardient == 0 and y_gardient == 0: # A gardient with 0 length
-                #     continue
-                # if np.linalg.norm(np.array([x_gardient, y_gardient])) < 0.5:
-                # if np.linalg.norm(np.array([x_gardient, y_gardient])) < 0.6:
-                if np.linalg.norm(np.array([x_gardient, y_gardient])) < 0.7:
+                ignore_gardients_shorter_than = 0.7 # 0.6 # 0.5
+                if np.linalg.norm(np.array([x_gardient, y_gardient])) < ignore_gardients_shorter_than:
                     continue
-                # Checks the 4 lines of the image's frame for the intersection point in one of them.
+                # Checks the 4 lines of the image's frame for the intersection point between "gardient_line" and one of them.
                 gardient_line = ([j, k], [j + y_gardient.item(), k + x_gardient.item()])
                 intersection_point = None
                 if x_gardient < 0:
-                    intersection_point_candidate = line_intersection(line=gardient_line, border=[(0, 0), (0, navigation_image.shape[1] - 1)], side="left")
+                    intersection_point_candidate = line_intersection(line=gardient_line, border=[(0, 0), (0, navigation_image.shape[1] - 1)]) # Left image border
                     if intersection_point_candidate is not None and \
                             intersection_point_candidate[0] == 0 and \
                             0 <= intersection_point_candidate[1] < navigation_image.shape[0] - 1:
@@ -76,7 +77,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                 else:
                     intersection_point = None
                     if y_gardient < 0:
-                        intersection_point_candidate = line_intersection(line=gardient_line, border=([0, 0], [navigation_image.shape[0] - 1, 0]), side="up")
+                        intersection_point_candidate = line_intersection(line=gardient_line, border=([0, 0], [navigation_image.shape[0] - 1, 0])) # Upper image border
                         if intersection_point_candidate is not None and \
                                 intersection_point_candidate[1] == 0 and \
                                 0 <= intersection_point_candidate[0] < navigation_image.shape[1] - 1:
@@ -86,7 +87,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                     else:
                         intersection_point = None
                         if 0 < y_gardient:
-                            intersection_point_candidate = line_intersection(line=gardient_line, border=([0, navigation_image.shape[1] - 1], [navigation_image.shape[0] - 1, navigation_image.shape[1] - 1]), side="down")
+                            intersection_point_candidate = line_intersection(line=gardient_line, border=([0, navigation_image.shape[1] - 1], [navigation_image.shape[0] - 1, navigation_image.shape[1] - 1])) # Bottom image border
                             if intersection_point_candidate is not None and \
                                     intersection_point_candidate[1] == navigation_image.shape[0] - 1 and \
                                     0 <= intersection_point_candidate[0] < navigation_image.shape[1] - 1:
@@ -96,7 +97,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                         else:
                             intersection_point = None
                             if 0 < x_gardient:
-                                intersection_point_candidate = line_intersection(line=gardient_line, border=([navigation_image.shape[0] - 1, 0], [navigation_image.shape[0] - 1, navigation_image.shape[1] - 1]), side="right")
+                                intersection_point_candidate = line_intersection(line=gardient_line, border=([navigation_image.shape[0] - 1, 0], [navigation_image.shape[0] - 1, navigation_image.shape[1] - 1])) # Right image border
                                 if intersection_point_candidate is not None and \
                                         intersection_point_candidate[0] == navigation_image.shape[0] - 1 and \
                                         0 <= intersection_point_candidate[1] < navigation_image.shape[0] - 1:
@@ -110,6 +111,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                                 print(gardient_line)
                                 print("WARNING, a line didn't find an intersection line with the image's frame.")
                                 # raise Exception("ERROR, No intersection line.")
+                # Finds all 2D points along current-pixel to intersection-with-image-frame-pixel line
                 # line_points = bresenham_line(x0=k, y0=j,
                 #                              x1=int(x_intersection), y1=int(y_intersection))
                 # line_points = bresenham_line(x0=k, y0=j,
@@ -119,9 +121,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                 gardient_length = np.linalg.norm(np.array([x_gardient, y_gardient]))
                 gardient_radians = math.atan2(y_gardient, x_gardient)
                 R_gardient = get_2d_rotation_matrix(radians=-gardient_radians)
-                # lines_percentage_of_screen = 0.42
-                # lines_percentage_of_screen = 0.05
-                lines_percentage_of_screen = 0.2
+                lines_percentage_of_screen = 0.2 # 0.05 # 0.42
                 screen_average_of_width_and_height = (navigation_image.shape[0] + navigation_image.shape[1]) / 2
                 max_line_length = int(lines_percentage_of_screen * screen_average_of_width_and_height)
                 current_line_length = 0
@@ -132,6 +132,9 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                     if 0 <= point[0] < navigation_image.shape[1] and 0 <= point[1] < navigation_image.shape[0]:
                         x_current_point_gardient = x[point[1]][point[0]]
                         y_current_point_gardient = y[point[1]][point[0]]
+                        # Sets current gardient's line's point's (pixel's) "navigation" value.
+                        # Longer gardients, and points closer to the original gardient start point cause the value to be higher.
+                        # Very important to find the best formula here.
                         # navigation_image[point[1]][point[0]] = 1
                         # navigation_image[point[1]][point[0]] = navigation_image[point[1]][point[0]] + (gardient_length) * ((1 - (current_line_length / max_line_length)) ** (1 / 10))
                         # navigation_image[point[1]][point[0]] = navigation_image[point[1]][point[0]] + gardient_length * (1 - (current_line_length / max_line_length))**(1 / 10)
@@ -148,8 +151,8 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                         if rotated_point[0] < 0:
                             gardient_length += rotated_point[0]
                             if gardient_length <= 0:
-                                break
-        # Keeps only the best x% navigation_values
+                                break # Stop using current gardient, as anti-current-gardient gardients destroyed it along it's route.
+        # Keeps only the best x% navigation_values, in term of which (x, y) pixels got high "navigation" score.
         navigation_percentage_to_keep = 0.15
         navigation_values = []
         for j in range(navigation_image.shape[0]):
@@ -165,7 +168,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         navigation_image = navigation_image.T
         axes[i, 2].imshow(navigation_image, cmap=cmap)
 
-        # Finds the pixel to navigate through, weighted average
+        # Finds the pixel to navigate through, using weighted average over all of the navigation map.
         x_sum = 0
         y_sum = 0
         sum_values = 0
@@ -177,6 +180,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                 y_sum += j * current_value
         navigate_to_x = int(x_sum / sum_values)
         navigate_to_y = int(y_sum / sum_values)
+        # Plots the Goto marker on the RGB image.
         color = np.array([255, 0 ,0])
         marker_size = 7
         goto_image = copy.deepcopy(rgb)

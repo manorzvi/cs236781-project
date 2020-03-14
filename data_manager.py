@@ -14,9 +14,9 @@ def one_one_normalization(data):
 
 def calc_grads(img: torch.Tensor, grads_degree=1, normalization=False):
     assert isinstance(img,torch.Tensor)
+    # Use weighted average ksizes
     ksizes_and_weights = [{"ksize": 3, "weight": 0.7},
                           {"ksize": 5, "weight": 0.3}]
-
     img_np = img.cpu().numpy().squeeze()
     grad_x = np.zeros(img_np.shape, dtype=np.float64)
     grad_y = np.zeros(img_np.shape, dtype=np.float64)
