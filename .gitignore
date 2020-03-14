@@ -2,7 +2,6 @@
 data/
 depth/
 rgb/
-depth_gradients/
 raw_datasets/
 __pycache__/
 .idea
