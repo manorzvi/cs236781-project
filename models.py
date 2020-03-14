@@ -12,6 +12,7 @@ from torch.nn import DataParallel
 def make_encoder_cbr(names: list,model_dict: dict,bn_dim: float,
                      existing_layer=None, bn_momentum=0.1):
     if existing_layer:
+        # Existing layer, followed by <names> layers
         layers = [existing_layer,
                   nn.BatchNorm2d(bn_dim, momentum=0.1),
                   nn.ReLU(inplace=True)]
@@ -34,48 +35,12 @@ def make_decoder_cbr(sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
 
     return nn.Sequential(*layers)
 
-# class EncoderBlockCBR(nn.Module):
-#     def __init__(self,names: list,model_dict: dict,bn_dim: float,
-#                  existing_layer=None, bn_momentum=0.1):
-#         super().__init__()
-#
-#         if existing_layer:
-#             layers = [existing_layer,
-#                       nn.BatchNorm2d(bn_dim, momentum=0.1),
-#                       nn.ReLU(inplace=True)]
-#         else:
-#             layers = []
-#
-#         for name in names:
-#             layers += [deepcopy(model_dict[name]),
-#                        nn.BatchNorm2d(bn_dim, momentum=bn_momentum),
-#                        nn.ReLU(inplace=True)]
-#
-#         self.cbr = nn.Sequential(*layers)
-#
-#     def forward(self, x):
-#         return self.cbr(x)
-
-
-# class DecoderBlockCBR(nn.Module):
-#     def __init__(self,sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
-#         super().__init__()
-#
-#         layers = []
-#         for size in sizes:
-#             layers += [nn.Conv2d(size[0], size[1], kernel_size=kernel_size, padding=padding),
-#                        nn.BatchNorm2d(size[1], momentum=bn_momentum),
-#                        nn.ReLU(inplace=True)]
-#
-#         self.cbr = nn.Sequential(*layers)
-#
-#     def forward(self, x):
-#         return self.cbr(x)
 
 class SpecialFuseNet(nn.Module):
     def __init__(self, warm_start=True, bn_momentum=0.1):
         super().__init__()
 
+        # Extract Conv2d layers only from VGG16 model (Encoder Warm Start, according to the paper)
         layers_names = ["conv1_1", "conv1_2", "conv2_1", "conv2_2", "conv3_1", "conv3_2", "conv3_3", "conv4_1",
                         "conv4_2", "conv4_3", "conv5_1", "conv5_2", "conv5_3"]
         layers = list(models.vgg16(pretrained=warm_start).features.children())
@@ -250,25 +215,19 @@ class SpecialFuseNet(nn.Module):
         return y
 
 
-class SpecialFuseNetModel(nn.Module):
+class SpecialFuseNetModel():
     def __init__(self, device=None, rgb_size=None,depth_size=None,grads_size=None,
-                 mode='train',seed=42, optimizer=None, scheduler=None):
-
+                 seed=42, optimizer=None, scheduler=None):
         assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
         assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
-        assert mode in ['train', 'test'], "mode neither 'train' nor 'test'"
-        assert isinstance(device, torch.device), "Please provide device as torch.device instance"
+        assert isinstance(device, torch.device), "Please provide device as torch.device"
 
         torch.manual_seed(seed)
-
-        super().__init__()
 
         self.rgb_size   = rgb_size
         self.depth_size = depth_size
         self.grads_size = grads_size
-        self.mode       = mode
-
-        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.device     = device
 
         self.net = SpecialFuseNet()
         self._check_features()
@@ -277,51 +236,48 @@ class SpecialFuseNetModel(nn.Module):
 
         self.loss_func = nn.MSELoss()
 
-        if self.mode == 'train':
-            if optimizer:
-                self.optimizer = optimizer
-            else:
-                lr           = 0.001 # HyperParameters from the paper
-                momentum     = 0.9
-                weight_decay = 0.0005
-                print(f'[debug] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
-                self.optimizer = optim.SGD(self.net.parameters(),
-                                           lr=lr, momentum=momentum, weight_decay=weight_decay)
-            if scheduler:
-                self.scheduler = scheduler
-            else:
-                self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.1)
-
-
-
+        if optimizer:
+            self.optimizer = optimizer
+        else:
+            lr           = 0.001 # HyperParameters from the paper
+            momentum     = 0.9
+            weight_decay = 0.0005
+            print(f'[debug] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
+            self.optimizer = optim.SGD(self.net.parameters(),
+                                       lr=lr, momentum=momentum, weight_decay=weight_decay)
+        if scheduler:
+            self.scheduler = scheduler
+        else:
+            step_size = 1000
+            gamma     = 0.1
+            print(f'[debug] - default scheduler set: StepSR(step_size={step_size},gamma={gamma})')
+            self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
 
     def initialize(self, init_type='xavier', init_gain=0.02):
         self.net.to(self.device)
 
         # TODO: Not sure about that implementation.
-        #  It don't take care about the order of the layers (importent for Xavier). (manorz, 03/08/20)
+        #  It don't take care about the order of the layers (important for Xavier). (manorz, 03/08/20)
         for child_name, child in self.net.named_children():
-            # print(f'[debug] - child={child_name}')
+            # print(f'[debug] - child={child_name}, type(child)={type(child)}')
             if child_name in self.net.need_initialization: # CBR-s in the Decoder
-                for grandchild in child.children(): # Go through the Sequential
-                    init_weights(grandchild, init_type, init_gain=init_gain)
+                init_weights(child, init_type, init_gain=init_gain)
 
     def _check_features(self):
-        device = next(self.parameters()).device
         with torch.no_grad():
             # Make sure encoder and decoder are compatible
-            rgb_input   = torch.randn(1, *self.rgb_size,   device=device)
-            depth_input = torch.randn(1, *self.depth_size, device=device)
+            rgb_input   = torch.randn(1, *self.rgb_size,   device=self.device)
+            depth_input = torch.randn(1, *self.depth_size, device=self.device)
             grads_output = self.net(rgb_input,depth_input)
             two_grads_size = tuple([2] + list(self.grads_size)[1:])
             assert tuple(grads_output.shape[1:]) == two_grads_size, f"Input gradients does not match in size to Output gradients\n" \
                                                                     f"(|{self.grads_size}|!=|{tuple(grads_output.shape[1:])}|)"
 
-    def forward(self, rgb_batch, depth_batch):
+    def __call__(self, rgb_batch, depth_batch):
         return self.net(rgb_batch, depth_batch)
 
     def loss(self,ground_truth_grads: torch.Tensor, approximated_grads: torch.Tensor):
-        print(f'[debug] - shapes: |tags|={ground_truth_grads.shape}, |output|={approximated_grads.shape}')
+        # print(f'[debug] - shapes: |tags|={ground_truth_grads.shape}, |output|={approximated_grads.shape}')
         assert ground_truth_grads.shape == approximated_grads.shape
         return self.loss_func(approximated_grads, ground_truth_grads)
 
