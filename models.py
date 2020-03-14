@@ -242,7 +242,7 @@ class SpecialFuseNetModel():
             lr           = 0.001 # HyperParameters from the paper
             momentum     = 0.9
             weight_decay = 0.0005
-            print(f'[debug] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
+            print(f'[I] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
             self.optimizer = optim.SGD(self.net.parameters(),
                                        lr=lr, momentum=momentum, weight_decay=weight_decay)
         if scheduler:
@@ -250,7 +250,7 @@ class SpecialFuseNetModel():
         else:
             step_size = 1000
             gamma     = 0.1
-            print(f'[debug] - default scheduler set: StepSR(step_size={step_size},gamma={gamma})')
+            print(f'[I] - default scheduler set: StepSR(step_size={step_size},gamma={gamma})')
             self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
 
     def initialize(self, init_type='xavier', init_gain=0.02):
@@ -281,6 +281,9 @@ class SpecialFuseNetModel():
         assert ground_truth_grads.shape == approximated_grads.shape
         return self.loss_func(approximated_grads, ground_truth_grads)
 
+    def set_requires_grad(self, nets, requires_grad=False):
+        for param in self.net.parameters():
+            param.requires_grad = requires_grad
 
 
 
