@@ -4,10 +4,13 @@ import sys
 import tqdm
 from pathlib import Path
 from typing import Callable, Any
-from models import SpecialFuseNetModel
 import torch
 from torch.utils.data import DataLoader
+from torchvision import transforms as T
+
+from models import SpecialFuseNetModel
 from train_results import BatchResult, EpochResult, FitResult
+from data_manager import rgbd_gradients_dataset, rgbd_gradients_dataloader
 
 
 class FuseNetTrainer():
@@ -104,6 +107,8 @@ class FuseNetTrainer():
         :param kw: Keyword args supported by _foreach_batch.
         :return: An EpochResult for the epoch.
         """
+        # TODO: check if it replace setting model's parameters manually as in model.set_requires_grad():
+        #  self.model.set_requires_grad(True) (manorz, 03/14/20)
         self.model.net.train(True)  # set train mode
         return self._foreach_batch(dl_train, self.train_batch, **kw)
 
@@ -114,6 +119,8 @@ class FuseNetTrainer():
         :param kw: Keyword args supported by _foreach_batch.
         :return: An EpochResult for the epoch.
         """
+        # TODO: check if it replace setting model's parameters manually as in model.set_requires_grad():
+        #  self.model.set_requires_grad(False) (manorz, 03/14/20)
         self.model.net.train(False)  # set evaluation (test) mode
         return self._foreach_batch(dl_test, self.test_batch, **kw)
 
@@ -219,6 +226,78 @@ class FuseNetTrainer():
 
         return EpochResult(losses=losses)
 
+if __name__ == '__main__':
+    cwd = os.getcwd()
+    print(f'[I] - cwd = {cwd}')
+    dataset_dir = os.path.join(cwd, 'data/nyuv2')
+    print(f'[I] - dataset_dir = {dataset_dir}')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'[I] - device = {device}')
 
+    image_size       = (224, 224)
+    train_test_ratio = 0.9
+    batch_size       = 4
+    num_workers      = 4
+    print(f'[I] - general hyper-parameters:\n'
+          f'      -------------------------\n'
+          f'    - image_size = {image_size}\n'
+          f'    - train_test_ratio = {train_test_ratio}\n'
+          f'    - batch_size = {batch_size}\n'
+          f'    - num_workers = {num_workers}')
 
+    betas = (0.9, 0.99)
+    lr = 0.001
+    momentum = 0.9
+    weight_decay = 0.0005
+    print(f'[I] - optimizer hyper-parameters:\n'
+          f'      ---------------------------\n'
+          f'    - betas = {betas}\n'
+          f'    - learning_rate = {lr}\n'
+          f'    - momentum = {momentum}\n'
+          f'    - weight_decay = {weight_decay}')
+
+    rgb_tf = T.Compose([
+        # Resize to constant spatial dimensions
+        T.Resize(image_size),
+        # PIL.Image -> torch.Tensor
+        T.ToTensor(),
+        # Dynamic range [0,1] -> [-1, 1]
+        T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5)),
+    ])
+    print(f'[I] - rgb transforms = {rgb_tf}')
+    depth_tf = T.Compose([
+        # Resize to constant spatial dimensions
+        T.Resize(image_size),
+        # PIL.Image -> torch.Tensor
+        T.ToTensor(),
+        # Dynamic range [0,1] -> [-1, 1]
+        T.Normalize(mean=(.5,), std=(.5,)),
+    ])
+    print(f'[I] - depth transforms = {depth_tf}')
+
+    dl_train, dl_test = rgbd_gradients_dataloader(root=dataset_dir,
+                                                  batch_size=batch_size,
+                                                  num_workers=num_workers,
+                                                  train_test_ration=train_test_ratio,
+                                                  rgb_transforms=rgb_tf, depth_transforms=depth_tf)
+    sample_batch = next(iter(dl_test))
+    rgb_size     = tuple(sample_batch['rgb'].shape[1:])
+    depth_size   = tuple(sample_batch['depth'].shape[1:])
+    grads_size   = tuple(sample_batch['x'].shape[1:])
+
+    fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size,
+                                       grads_size=grads_size, device=device)
+
+    trainer = FuseNetTrainer(model=fusenetmodel, device=device)
+
+    checkpoint_file = 'checkpoints/special_fusenet'
+    if os.path.isfile(f'{checkpoint_file}.pt'):
+        print(f'[W] - remove old checkpoint file ({checkpoint_file})')
+        try:
+            os.remove(f'{checkpoint_file}.pt')
+        except:
+            print(f'[E] - failed to remove old checkpoint file ({checkpoint_file})')
+            exit()
+
+    trainer.fit(dl_train, dl_test, early_stopping=20, print_every=10, checkpoints=checkpoint_file)
 
