@@ -1,0 +1,9 @@
+IMAGE_SIZE       = (224,224)
+TRAIN_TEST_RATIO = 0.9
+BATCH_SIZE       = 4
+NUM_WORKERS      = 4
+
+BETAS        = (0.9,0.99)
+LR           = 0.001
+MOMENTUM     = 0.9
+WEIGHT_DECAY = 0.0005

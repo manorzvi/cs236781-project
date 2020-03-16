@@ -182,14 +182,18 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         navigate_to_y = int(y_sum / sum_values)
         # Plots the Goto marker on the RGB image.
         color = np.array([255, 0 ,0])
-        marker_size = 7
+        marker_length = int(navigation_image.shape[0] / 10)
+        marker_width = int(marker_length / 3)
         goto_image = copy.deepcopy(rgb)
-        for k in range(navigate_to_y - int(marker_size / 2), navigate_to_y + int(marker_size / 2) + 1):
-            if 0 <= k < navigation_image.shape[0]:
-                goto_image[k][navigate_to_x] = color
-        for k in range(navigate_to_x - int(marker_size / 2), navigate_to_x + int(marker_size / 2) + 1):
-            if 0 <= k < navigation_image.shape[1]:
-                goto_image[navigate_to_y][k] = color
+        for j in range(navigate_to_x - int(marker_width / 2), navigate_to_x + int(marker_width / 2) + 1):
+            for k in range(navigate_to_y - int(marker_length / 2), navigate_to_y + int(marker_length / 2) + 1):
+                if 0 <= k < navigation_image.shape[0] and 0 <= j < navigation_image.shape[1]:
+                    goto_image[k][j] = color
+#                     goto_image[k][navigate_to_x] = color
+        for j in range(navigate_to_y - int(marker_width / 2), navigate_to_y + int(marker_width / 2) + 1):
+            for k in range(navigate_to_x - int(marker_length / 2), navigate_to_x + int(marker_length / 2) + 1):
+                if 0 <= k < navigation_image.shape[1] and 0 <= j < navigation_image.shape[0]:
+                    goto_image[j][k] = color
         axes[i, 0].imshow(goto_image, cmap=cmap)
 
     return fig, axes
