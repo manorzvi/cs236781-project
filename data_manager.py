@@ -2,6 +2,9 @@ import numpy as np
 import torch
 import os
 import cv2
+import random
+import PIL
+from hyperparameters import *
 from torchvision import transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
@@ -12,12 +15,21 @@ def one_one_normalization(data):
     return 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
 
 
-def calc_grads(img: torch.Tensor, ksize=5, grads_degree=1, normalization=True):
+def calc_grads(img: torch.Tensor, ksizes:list=[3,5], kweights=[0.7,0.5], grads_degree=1, normalization=True):
     assert isinstance(img,torch.Tensor)
+    assert isinstance(ksizes,list) and isinstance(kweights, list)
 
     img_np = img.cpu().numpy().squeeze()
-    grad_x = cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksize)
-    grad_y = cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksize)
+    # grad_x = cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksizes[0])
+    # grad_y = cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksizes[0])
+
+    for i,(size,weight) in enumerate(zip(ksizes,kweights)):
+        if i == 0:
+            grad_x = cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=size) * weight
+            grad_y = cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=size) * weight
+        else:
+            grad_x += cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=size) * weight
+            grad_y += cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=size) * weight
 
     if normalization:
         grad_x = one_one_normalization(grad_x)
@@ -33,11 +45,10 @@ def calc_grads(img: torch.Tensor, ksize=5, grads_degree=1, normalization=True):
 
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, rgb_transforms=None, depth_transforms=None):
+    def __init__(self, root, use_transforms=False):
 
         self.root             = root
-        self.rgb_transforms   = rgb_transforms
-        self.depth_transforms = depth_transforms
+        self.use_transforms   = use_transforms
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -49,27 +60,79 @@ class rgbd_gradients_dataset(Dataset):
 
         self.len = len(self.rgbs)
 
-    # def __load_image__(self, path):
-    #     # TODO: Ask Haim. I think it would harm performances due to memory shortage &
-    #     #  the need to search the dictionary on each call instead of just to load an image when it needed)
-    #     #  (manorz, 03/06/20)
-    #     if path not in self.RAM_images: # Saves to RAM, to prevent a hard drive bottleneck.
-    #         self.RAM_images[path] = Image.open(path + ".png")
-    #         if self.transform:
-    #             self.RAM_images[path] = self.transform(self.RAM_images[path])
-    #     return self.RAM_images[path]
+    def transform(self, rgb, depth):
+        # TODO: I really don't understand why to apply every transform you found online,
+        #  while we still can't run a single prpper training iteration.
 
-    # def __load_gradient__(self, path):
-    #     if path not in self.RAM_gardients: # Saves to RAM, to prevent a hard drive bottleneck.
-    #         self.RAM_gardients[path] = torch.from_numpy(np.load(path + ".npy"))
-    #     return self.RAM_gardients[path]
+        # Resize to constant spatial dimensions
+        rgb   = T.Resize(IMAGE_SIZE)(rgb)
+        depth = T.Resize(IMAGE_SIZE)(depth)
+
+        # Random horizontal flipping
+        if 0.5 < random.random(): #
+            rgb   = T.RandomHorizontalFlip(p=1.0)(rgb)
+            depth = T.RandomHorizontalFlip(p=1.0)(depth)
+
+        # TODO: Uncomment the following later, after we see some progress. Also,
+        #  instead of stacking tons of code in the same function, you can write your own transformer,
+        #  as in: https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
+        # Randomly changes the brightness, contrast and saturation of an image.
+        # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
+        # rgb = T.ColorJitter(
+        #     brightness=abs(0.1 * torch.randn(1).item()),
+        #     contrast=abs(0.1 * torch.randn(1).item()),
+        #     saturation=abs(0.1 * torch.randn(1).item()),
+        #     hue=abs(0.1 * torch.randn(1).item())
+        # )(rgb)
+
+        # Crops and resizes back to IMAGE_SIZE
+        # minimum_image_precentage_to_look_at = 0.7
+        # image_precentage_to_look_at = random.uniform(minimum_image_precentage_to_look_at, 1.0)
+        # crop_width = int(image_precentage_to_look_at * IMAGE_SIZE[1])
+        # crop_height = int(image_precentage_to_look_at * IMAGE_SIZE[0])
+        # crop_top = random.randint(0, IMAGE_SIZE[0] - crop_height)
+        # crop_left = random.randint(0, IMAGE_SIZE[1] - crop_width)
+        # rgb = T.functional.resized_crop(rgb, crop_top, crop_left, crop_height, crop_width, IMAGE_SIZE)
+        # depth = T.functional.resized_crop(depth, crop_top, crop_left, crop_height, crop_width, IMAGE_SIZE)
+
+        # Rotation
+        # degrees_range = 20  # (degrees_range X 2) = range
+        # padding = max(IMAGE_SIZE[0], IMAGE_SIZE[1])
+        # frame_removal_length = 3
+        # rgb = T.functional.resized_crop(rgb, frame_removal_length, frame_removal_length,
+        #                                 IMAGE_SIZE[0] - 2 * frame_removal_length,
+        #                                 IMAGE_SIZE[1] - 2 * frame_removal_length, IMAGE_SIZE)
+        # depth = T.functional.resized_crop(depth, frame_removal_length, frame_removal_length,
+        #                                   IMAGE_SIZE[0] - 2 * frame_removal_length,
+        #                                   IMAGE_SIZE[1] - 2 * frame_removal_length, IMAGE_SIZE)
+        # rgb = T.Pad(padding=padding, fill=0, padding_mode='edge')(rgb)
+        # depth = T.Pad(padding=padding, fill=0, padding_mode='edge')(depth)
+        # degree_to_rotate = random.uniform(-degrees_range, degrees_range)
+        # # some bug in torchvision, got the solution at:
+        # # https://github.com/pytorch/vision/issues/1759
+        # # https://www.gitmemory.com/issue/pytorch/vision/1759/575357711
+        # # filler = 0.0 if rgb.mode.startswith("F") else 0
+        # num_bands = len(rgb.getbands())
+        # rgb = T.functional.rotate(img=rgb, angle=degree_to_rotate, fill=(0,) * num_bands)
+        # # filler = 0.0 if depth.mode.startswith("F") else 0
+        # num_bands = len(depth.getbands())
+        # depth = T.functional.rotate(img=depth, angle=degree_to_rotate, fill=(0,) * num_bands)
+        # rgb = T.functional.resized_crop(rgb, padding, padding, IMAGE_SIZE[0], IMAGE_SIZE[1], IMAGE_SIZE)
+        # depth = T.functional.resized_crop(depth, padding, padding, IMAGE_SIZE[0], IMAGE_SIZE[1], IMAGE_SIZE)
+
+        # USE THIS ??? torchvision.transforms.functional.perspective(img, startpoints, endpoints, interpolation=3)
+
+        # PIL.Image -> torch.Tensor
+        rgb   = T.ToTensor()(rgb)
+        depth = T.ToTensor()(depth)
+
+        # Dynamic range [0,1] -> [-1, 1]
+        rgb   = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
+        depth = T.Normalize(mean=(.5,), std=(.5,))(depth)
+
+        return rgb, depth
 
     def __getitem__(self, index):
-        # TODO: Uncomment if decided that the RAM thing above is better than standard implementation. (manorz, 03/06/20)
-        # X_rgb   = self.__load_image__(self.rgb_dir + str(index))
-        # X_depth = self.__load_image__(self.depth_dir + str(index))
-        # Y_x     = self.__load_gradient__(self.gradx_dir + str(index))
-        # Y_y     = self.__load_gradient__(self.grady_dir + str(index))
 
         rgb_path   = os.path.join(self.root, "rgb",   self.rgbs[index])
         d_path     = os.path.join(self.root, "depth", self.depths[index])
@@ -77,10 +140,8 @@ class rgbd_gradients_dataset(Dataset):
         rgb   = Image.open(rgb_path)
         d     = Image.open(d_path)
 
-        if self.rgb_transforms:
-            rgb = self.rgb_transforms(rgb)
-        if self.depth_transforms:
-            d   = self.depth_transforms(d)
+        if self.use_transforms:
+            rgb, d = self.transform(rgb, d)
 
         x,y = calc_grads(d)
 
@@ -93,21 +154,20 @@ class rgbd_gradients_dataset(Dataset):
         return self.len
 
 
-def rgbd_gradients_dataloader(root, train_test_ration, batch_size, num_workers,
-                              rgb_transforms=None, depth_transforms=None):
-    rgbd_grads_ds = rgbd_gradients_dataset(root, rgb_transforms=rgb_transforms, depth_transforms=depth_transforms)
-    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ration)),
-                     int(np.floor(len(rgbd_grads_ds) * (1-train_test_ration)))]
+def rgbd_gradients_dataloader(root, use_transforms=False):
+    rgbd_grads_ds = rgbd_gradients_dataset(root, use_transforms=use_transforms)
+    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    TRAIN_TEST_RATIO)),
+                     int(np.floor(len(rgbd_grads_ds) * (1-TRAIN_TEST_RATIO)))]
 
     ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
 
     dl_train = torch.utils.data.DataLoader(ds_train,
-                                           batch_size=batch_size,
-                                           num_workers=num_workers,
+                                           batch_size=BATCH_SIZE,
+                                           num_workers=NUM_WORKERS,
                                            shuffle=True)
     dl_test  = torch.utils.data.DataLoader(ds_test,
-                                           batch_size=batch_size,
-                                           num_workers=num_workers,
+                                           batch_size=BATCH_SIZE,
+                                           num_workers=NUM_WORKERS,
                                            shuffle=True)
     return (dl_train, dl_test)
 

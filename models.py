@@ -37,7 +37,7 @@ def make_decoder_cbr(sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
 
 
 class SpecialFuseNet(nn.Module):
-    def __init__(self, warm_start=True, bn_momentum=0.1):
+    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=1.0):
         super().__init__()
 
         # Extract Conv2d layers only from VGG16 model (Encoder Warm Start, according to the paper)
@@ -60,15 +60,15 @@ class SpecialFuseNet(nn.Module):
 
         self.CBR3_RGB_ENC = make_encoder_cbr(["conv3_1", "conv3_2", "conv3_3"], layers_dict, 256)
         self.RGB_POOL3    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
-        self.RGB_DROPOUT3 = nn.Dropout(p=0.4)
+        self.RGB_DROPOUT3 = nn.Dropout(p=dropout_p)
 
         self.CBR4_RGB_ENC = make_encoder_cbr(["conv4_1", "conv4_2", "conv4_3"], layers_dict, 512)
         self.RGB_POOL4    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
-        self.RGB_DROPOUT4 = nn.Dropout(p=0.4)
+        self.RGB_DROPOUT4 = nn.Dropout(p=dropout_p)
 
         self.CBR5_RGB_ENC = make_encoder_cbr(["conv5_1", "conv5_2", "conv5_3"], layers_dict, 512)
         self.RGB_POOL5    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
-        self.RGB_DROPOUT5 = nn.Dropout(p=0.4)
+        self.RGB_DROPOUT5 = nn.Dropout(p=dropout_p)
 
         # ---------------------------------------------------------------------
         # --------------------------- Depth Encoder ---------------------------
@@ -89,11 +89,11 @@ class SpecialFuseNet(nn.Module):
 
         self.CBR3_DEPTH_ENC = make_encoder_cbr(["conv3_1", "conv3_2", "conv3_3"], layers_dict, 256)
         self.DEPTH_POOL3    = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.DEPTH_DROPOUT3 = nn.Dropout(p=0.4)
+        self.DEPTH_DROPOUT3 = nn.Dropout(p=dropout_p)
 
         self.CBR4_DEPTH_ENC = make_encoder_cbr(["conv4_1", "conv4_2", "conv4_3"], layers_dict, 512)
         self.DEPTH_POOL4    = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.DEPTH_DROPOUT4 = nn.Dropout(p=0.4)
+        self.DEPTH_DROPOUT4 = nn.Dropout(p=dropout_p)
 
         # According to the paper, no MaxPool & Dropout on Depth's last block
         self.CBR5_DEPTH_ENC = make_encoder_cbr(["conv5_1", "conv5_2", "conv5_3"], layers_dict, 512)
@@ -103,19 +103,19 @@ class SpecialFuseNet(nn.Module):
         # ---------------------------------------------------------------------
         self.UNPOOL5      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR5_RGB_DEC = make_decoder_cbr([(512, 512), (512, 512), (512, 512)])
-        self.DROPOUT5_DEC = nn.Dropout(p=0.4)
+        self.DROPOUT5_DEC = nn.Dropout(p=dropout_p)
 
         self.need_initialization.append('CBR5_RGB_DEC')
 
         self.UNPOOL4      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR4_RGB_DEC = make_decoder_cbr([(512, 512), (512, 512), (512, 256)])
-        self.DROPOUT4_DEC = nn.Dropout(p=0.4)
+        self.DROPOUT4_DEC = nn.Dropout(p=dropout_p)
 
         self.need_initialization.append('CBR4_RGB_DEC')
 
         self.UNPOOL3      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR3_RGB_DEC = make_decoder_cbr([(256, 256), (256, 256), (256, 128)])
-        self.DROPOUT3_DEC = nn.Dropout(p=0.4)
+        self.DROPOUT3_DEC = nn.Dropout(p=dropout_p)
 
         self.need_initialization.append('CBR3_RGB_DEC')
 
@@ -230,6 +230,8 @@ class SpecialFuseNetModel():
         self.device     = device
 
         self.net = SpecialFuseNet()
+        self.net.to(self.device)
+
         self._check_features()
         self.initialize()
         self.net = DataParallel(self.net).to(self.device)

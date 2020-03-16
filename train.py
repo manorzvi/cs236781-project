@@ -300,4 +300,3 @@ if __name__ == '__main__':
             exit()
 
     trainer.fit(dl_train, dl_test, early_stopping=20, print_every=10, checkpoints=checkpoint_file)
-
