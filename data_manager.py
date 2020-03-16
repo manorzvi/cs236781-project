@@ -93,8 +93,8 @@ class rgbd_gradients_dataset(Dataset):
         # Crops and resizes back to IMAGE_SIZE
         minimum_image_precentage_to_look_at = 0.7
         image_precentage_to_look_at = random.uniform(minimum_image_precentage_to_look_at, 1.0)
-        crop_width = int(image_precentage_to_look_at * IMAGE_SIZE[0])
-        crop_height = int(image_precentage_to_look_at * IMAGE_SIZE[1])
+        crop_width = int(image_precentage_to_look_at * IMAGE_SIZE[1])
+        crop_height = int(image_precentage_to_look_at * IMAGE_SIZE[0])
         crop_top = random.randint(0, IMAGE_SIZE[0] - crop_height)
         crop_left = random.randint(0, IMAGE_SIZE[1] - crop_width)
         rgb = T.functional.resized_crop(rgb, crop_top, crop_left, crop_height, crop_width, IMAGE_SIZE)
