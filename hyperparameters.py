@@ -4,8 +4,11 @@ BATCH_SIZE       = 4
 NUM_WORKERS      = 4
 
 BETAS        = (0.9,0.99)
-LR           = 0.001
+LR           = 0.001 # 0.001
 MOMENTUM     = 0.9
 WEIGHT_DECAY = 0.0005
+
+STEP_SIZE = 1000
+GAMMA     = 0.1
 
 NUM_EPOCHS=1000

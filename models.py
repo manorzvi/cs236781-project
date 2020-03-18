@@ -8,6 +8,7 @@ from torch.optim import lr_scheduler
 from copy import deepcopy
 from functions import init_weights
 from torch.nn import DataParallel
+from hyperparameters import *
 
 def make_encoder_cbr(names: list,model_dict: dict,bn_dim: float,
                      existing_layer=None, bn_momentum=0.1):
@@ -231,7 +232,7 @@ class SpecialFuseNetModel():
 
         self.net = SpecialFuseNet()
         self.net.to(self.device)
-        self.load_state_dict = self.net.load_state_dict
+
         self._check_features()
         self.initialize()
         self.net = DataParallel(self.net).to(self.device)
@@ -241,17 +242,22 @@ class SpecialFuseNetModel():
         if optimizer:
             self.optimizer = optimizer
         else:
-            lr           = 0.001 # HyperParameters from the paper
-            momentum     = 0.9
-            weight_decay = 0.0005
+#             lr           = 0.001 # HyperParameters from the paper
+#             momentum     = 0.9
+#             weight_decay = 0.0005
+            lr           = LR
+            momentum     = MOMENTUM
+            weight_decay = WEIGHT_DECAY
             print(f'[I] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
             self.optimizer = optim.SGD(self.net.parameters(),
                                        lr=lr, momentum=momentum, weight_decay=weight_decay)
         if scheduler:
             self.scheduler = scheduler
         else:
-            step_size = 1000
-            gamma     = 0.1
+#             step_size = 1000
+#             gamma     = 0.1
+            step_size = STEP_SIZE
+            gamma     = GAMMA
             print(f'[I] - default scheduler set: StepSR(step_size={step_size},gamma={gamma})')
             self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
 
@@ -286,3 +292,7 @@ class SpecialFuseNetModel():
     def set_requires_grad(self, nets, requires_grad=False):
         for param in self.net.parameters():
             param.requires_grad = requires_grad
+
+
+
+
