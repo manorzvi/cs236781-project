@@ -11,10 +11,11 @@ from torchvision import transforms as T
 from models import SpecialFuseNetModel
 from train_results import BatchResult, EpochResult, FitResult
 from data_manager import rgbd_gradients_dataset, rgbd_gradients_dataloader
+from hyperparameters import *
 
 
 class FuseNetTrainer():
-    def __init__(self, model:SpecialFuseNetModel, num_epochs:int=400, device:torch.device=None):
+    def __init__(self, model:SpecialFuseNetModel, num_epochs:int=NUM_EPOCHS, device:torch.device=None):
         """
         Initialize the trainer.
         :param model: Instance of the model to train.

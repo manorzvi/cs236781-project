@@ -8,6 +8,9 @@ from functions import torch2np_u8
 from lines_utils import line_intersection, get_line, get_2d_rotation_matrix
 
 # ------------------Constants------------------
+ # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
+number_of_frame_pixels_to_ignore = 5
+
 # For the maximum lines' lengths, starting from the gardients' roots, going where each gardient points.
 lines_percentage_of_screen = 0.2 # 0.15 # 0.05 # 0.42
 
@@ -90,7 +93,6 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         # Distance from it's origin.
         # Anti-gardient pixels along it's way. (Gardients who point to the opposite direction of the gardient)
         navigation_image = np.zeros(x.shape, dtype=np.float64)
-        number_of_frame_pixels_to_ignore = 3 # Because if a image's frame is black, it may cause false lines with nearby white pixels.
         for j in range(number_of_frame_pixels_to_ignore, navigation_image.shape[0] - number_of_frame_pixels_to_ignore):
             for k in range(number_of_frame_pixels_to_ignore, navigation_image.shape[1] - number_of_frame_pixels_to_ignore):
                 x_gardient = x[j][k]

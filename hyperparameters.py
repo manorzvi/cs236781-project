@@ -7,3 +7,5 @@ BETAS        = (0.9,0.99)
 LR           = 0.001
 MOMENTUM     = 0.9
 WEIGHT_DECAY = 0.0005
+
+NUM_EPOCHS=1000
