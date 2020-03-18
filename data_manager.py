@@ -166,7 +166,6 @@ class rgbd_gradients_dataset(Dataset):
         
 #         # Crops and resizes back to IMAGE_SIZE
 #         rgb, depth = RandomCropAndResize(output_size=IMAGE_SIZE, minimum_image_precentage_to_look_at=0.7)(rgb, depth)
-
         
 #         # Rotation
 #         rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=IMAGE_SIZE, degrees_range=20, frame_removal_length=3)(rgb, depth)
@@ -211,24 +210,22 @@ class rgbd_gradients_dataset(Dataset):
     def __len__(self):
         return self.len
 
-
-def rgbd_gradients_dataloader(root, train_test_ration, batch_size, num_workers, use_transforms=False):
+def rgbd_gradients_dataloader(root, use_transforms=False):
     rgbd_grads_ds = rgbd_gradients_dataset(root, use_transforms=use_transforms)
-    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ration)),
-                     int(np.floor(len(rgbd_grads_ds) * (1-train_test_ration)))]
+    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    TRAIN_TEST_RATIO)),
+                     int(np.floor(len(rgbd_grads_ds) * (1-TRAIN_TEST_RATIO)))]
 
     ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
 
     dl_train = torch.utils.data.DataLoader(ds_train,
-                                           batch_size=batch_size,
-                                           num_workers=num_workers,
+                                           batch_size=BATCH_SIZE,
+                                           num_workers=NUM_WORKERS,
                                            shuffle=True)
     dl_test  = torch.utils.data.DataLoader(ds_test,
-                                           batch_size=batch_size,
-                                           num_workers=num_workers,
+                                           batch_size=BATCH_SIZE,
+                                           num_workers=NUM_WORKERS,
                                            shuffle=True)
     return (dl_train, dl_test)
-
 
 if __name__ == '__main__':
 
