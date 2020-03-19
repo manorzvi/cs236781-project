@@ -6,11 +6,23 @@ import shutil
 
 from torch.nn import init
 
+def mkdir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def mkdirs(paths):
+    if isinstance(paths, list) and not isinstance(paths, str):
+        for path in paths:
+            mkdir(path)
+    else:
+        mkdir(paths)
 
 
 def denorm(x):
     out = (x + 1) / 2
     return out.clamp(0, 1)
+
 
 def torch2np_u8(x):
     if len(x.shape) == 4: # Squeeze the batch dimension if exist
@@ -25,16 +37,17 @@ def torch2np_u8(x):
     x = x.astype(np.uint8)
     return x
 
+
 def init_weights(net, init_type='normal', init_gain=0.02):
     def init_func(m):
         classname = m.__class__.__name__
         # print(f'classname={classname} ... ',end='')
         if ('Conv' in classname or 'Linear' in classname):
             if hasattr(m, 'weight'):
-                # print("initialize weight ... ", end='')
                 if init_type == 'normal':
                     init.normal_(m.weight, 0.0, init_gain)
                 elif init_type == 'xavier':
+                    # print("init weight xavier ... ", end='')
                     init.xavier_normal_(m.weight, gain=init_gain)
                 elif init_type == 'kaiming':
                     init.kaiming_normal_(m.weight, a=0, mode='fan_in')
@@ -43,10 +56,10 @@ def init_weights(net, init_type='normal', init_gain=0.02):
                 else:
                     raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
             if hasattr(m, 'bias'):
-                # print("initialize bias to 0.0 ... ", end='')
+                # print("init bias 0.0 ... ", end='')
                 init.constant_(m.bias.data, 0.0)
         elif 'BatchNorm2d' in classname:
-            # print(f"initialize weight&bias ... ", end='')
+            # print(f"init weight 1.0 & bias 0.0 ... ", end='')
             init.normal_(m.weight.data, 1.0, init_gain)
             init.constant_(m.bias.data, 0.0)
         # print()
@@ -54,6 +67,7 @@ def init_weights(net, init_type='normal', init_gain=0.02):
     # print('Network initialize with %s ... \n' % init_type,end='')
     net.apply(init_func)
     # print('Done.')
+
 
 # NOTE: Following functions are legacy and deprecated. DON'T USE! (manorz, 03/07/20)
 #  ---------------------------------------------------------------------------------
