@@ -232,12 +232,24 @@ class SpecialFuseNetModel():
 
         self.net = SpecialFuseNet()
         self.net.to(self.device)
+        self.load_state_dict = self.net.load_state_dict
 
         self._check_features()
         self.initialize()
         self.net = DataParallel(self.net).to(self.device)
 
-        self.loss_func = nn.MSELoss()
+        def SpecialFuseNetModelLoss(output, target):
+            return torch.mean(torch.pow(torch.norm(torch.sub(output, target), dim=1), 2))
+        
+        class SpecialFuseNetModelLossMod(nn.Module):
+            def __init__(self):
+                super(SpecialFuseNetModelLossMod, self).__init__()
+
+            def forward(self, out, target):
+                return SpecialFuseNetModelLoss(out, target)
+            
+        self.loss_func = SpecialFuseNetModelLossMod()
+#         self.loss_func = nn.MSELoss()
 
         if optimizer:
             self.optimizer = optimizer
