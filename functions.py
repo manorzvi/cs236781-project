@@ -3,8 +3,15 @@ import cv2
 import numpy as np
 import os
 import shutil
-
 from torch.nn import init
+from hyperparameters import *
+
+def make_ckpt_fname():
+    return 'checkpoints/special_fusenet' + \
+           f"img_size={str(IMAGE_SIZE).replace('(','').replace(')','').replace(' ','')}," + \
+           f"batch_size={str(BATCH_SIZE)}," + \
+           f"betas={str(BETAS).replace('(','').replace(')','').replace(' ','')}," + \
+           f"lr={str(LR)}," + f"momentum={str(MOMENTUM)}"
 
 def mkdir(path):
     if not os.path.exists(path):
