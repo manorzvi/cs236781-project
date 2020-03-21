@@ -54,7 +54,7 @@ class FuseNetTrainer():
             checkpoint_filename = f'{checkpoints}.pt'
             Path(os.path.dirname(checkpoint_filename)).mkdir(exist_ok=True)
             if os.path.isfile(checkpoint_filename):
-                print(f'[info] - Loading checkpoint file {checkpoint_filename}')
+                print(f'[I] - Loading checkpoint file {checkpoint_filename}')
                 saved_state = torch.load(checkpoint_filename, map_location=self.device)
                 epochs_without_improvement = saved_state.get('ewi', epochs_without_improvement)
                 self.model.net.load_state_dict(saved_state['model_state'])
@@ -70,8 +70,8 @@ class FuseNetTrainer():
 
             train_result = self.train_epoch(dl_train)
             test_result  = self.test_epoch(dl_test)
-            train_loss.append(train_result.losses)
-            test_loss.append(test_result.losses)
+            train_loss.extend(train_result.losses)
+            test_loss.extend(test_result.losses)
             actual_num_epochs += 1
 
             if best_loss is None:
@@ -93,10 +93,14 @@ class FuseNetTrainer():
                                    ewi=epochs_without_improvement,
                                    model_state=self.model.net.state_dict())
                 torch.save(saved_state, checkpoint_filename)
-                print(f'[info] - Saved checkpoint {checkpoint_filename} at epoch {epoch+1}')
+                print(f'[I] - Saved checkpoint {checkpoint_filename} at epoch {epoch+1}')
 
             if post_epoch_fn:
-                post_epoch_fn(epoch, train_result, test_result, verbose)
+                # stop_training = post_epoch_fn(model=self.model, device=self.device, dl_test=dl_test)
+                # if stop_training:
+                #     print(f'[I] - Loss threshold achieved. stop training')
+                #     break
+                post_epoch_fn(model=self.model, device=self.device, dl_test=dl_test)
 
         return FitResult(actual_num_epochs, train_loss, test_loss)
 
@@ -107,9 +111,9 @@ class FuseNetTrainer():
         :param kw: Keyword args supported by _foreach_batch.
         :return: An EpochResult for the epoch.
         """
-        # TODO: check if it replace setting model's parameters manually as in model.set_requires_grad():
-        #  self.model.set_requires_grad(True) (manorz, 03/14/20)
+
         self.model.net.train(True)  # set train mode
+        self.model.set_requires_grad(requires_grad=True)
         return self._foreach_batch(dl_train, self.train_batch, **kw)
 
     def test_epoch(self, dl_test: DataLoader, **kw) -> EpochResult:
@@ -119,9 +123,9 @@ class FuseNetTrainer():
         :param kw: Keyword args supported by _foreach_batch.
         :return: An EpochResult for the epoch.
         """
-        # TODO: check if it replace setting model's parameters manually as in model.set_requires_grad():
-        #  self.model.set_requires_grad(False) (manorz, 03/14/20)
-        self.model.net.train(False)  # set evaluation (test) mode
+
+        # self.model.net.train(False)  # set evaluation (test) mode
+        self.model.set_requires_grad(requires_grad=False)
         return self._foreach_batch(dl_test, self.test_batch, **kw)
 
     def train_batch(self, batch) -> BatchResult:
@@ -234,7 +238,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'[I] - device = {device}')
 
-    image_size       = (224, 224)
+    image_size       = (64, 64)
     train_test_ratio = 0.9
     batch_size       = 4
     num_workers      = 4

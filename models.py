@@ -37,9 +37,12 @@ def make_decoder_cbr(sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
 
 
 class SpecialFuseNet(nn.Module):
-    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=1.0):
+    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=0.4):
         super().__init__()
-
+        print(f'[I] - Init SpecialFuseNet\n'
+              f'    - warm start={warm_start}\n'
+              f'    - BN momentum={bn_momentum}\n'
+              f'    - dropout_p={dropout_p}')
         # Extract Conv2d layers only from VGG16 model (Encoder Warm Start, according to the paper)
         layers_names = ["conv1_1", "conv1_2", "conv2_1", "conv2_2", "conv3_1", "conv3_2", "conv3_3", "conv4_1",
                         "conv4_2", "conv4_3", "conv5_1", "conv5_2", "conv5_3"]
@@ -217,11 +220,15 @@ class SpecialFuseNet(nn.Module):
 
 class SpecialFuseNetModel():
     def __init__(self, device=None, rgb_size=None,depth_size=None,grads_size=None,
-                 seed=42, optimizer=None, scheduler=None):
+                 seed=42, dropout_p=0.4, optimizer=None, scheduler=None):
         assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
         assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
         assert isinstance(device, torch.device), "Please provide device as torch.device"
-
+        print(f'[I] - device={device}\n'
+              f'    - seed={seed}\n'
+              f'    - dropout_p={dropout_p}\n'
+              f'    - optimizer={optimizer}\n'
+              f'    - scheduler={scheduler}')
         torch.manual_seed(seed)
 
         self.rgb_size   = rgb_size
@@ -229,7 +236,7 @@ class SpecialFuseNetModel():
         self.grads_size = grads_size
         self.device     = device
 
-        self.net = SpecialFuseNet()
+        self.net = SpecialFuseNet(dropout_p=dropout_p)
         self.net.to(self.device)
 
         self._check_features()
@@ -257,7 +264,9 @@ class SpecialFuseNetModel():
 
     def initialize(self, init_type='xavier', init_gain=0.02):
         self.net.to(self.device)
-
+        print(f'[I] - Initialize Net.\n'
+              f'    - Init type={init_type}\n'
+              f'    - Init gain={init_gain}\n')
         # TODO: Not sure about that implementation.
         #  It don't take care about the order of the layers (important for Xavier). (manorz, 03/08/20)
         for child_name, child in self.net.named_children():
@@ -283,7 +292,7 @@ class SpecialFuseNetModel():
         assert ground_truth_grads.shape == approximated_grads.shape
         return self.loss_func(approximated_grads, ground_truth_grads)
 
-    def set_requires_grad(self, nets, requires_grad=False):
+    def set_requires_grad(self, requires_grad=False):
         for param in self.net.parameters():
             param.requires_grad = requires_grad
 

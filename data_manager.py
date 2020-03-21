@@ -117,10 +117,11 @@ class RotateAndFillCornersWithImageFrameColors(object):
         return rgb, depth
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, use_transforms=False):
+    def __init__(self, root, use_transforms=False, overfit_mode=False):
 
         self.root             = root
         self.use_transforms   = use_transforms
+        self.overfit_mode     = overfit_mode
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -128,22 +129,24 @@ class rgbd_gradients_dataset(Dataset):
         self.depths = list(sorted(os.listdir(os.path.join(root, 'depth'))))
 
         if not (len(self.rgbs) == len(self.depths)):
-            raise Exception("Non-equal number of samples from each kind.")
+            raise Exception(f"Non-equal number of samples from each kind "
+                            f"(|rgbs|={len(self.rgbs)} != |depths|={len(self.depths)})")
 
         self.len = len(self.rgbs)
 
     def transform(self, rgb, depth):
         # TODO: I really don't understand why to apply every transform you found online,
-        #  while we still can't run a single prpper training iteration.
+        #  while we still can't run a single proper training iteration.
         
         # Resize to constant spatial dimensions
-        rgb = T.Resize(IMAGE_SIZE)(rgb)
+        rgb   = T.Resize(IMAGE_SIZE)(rgb)
         depth = T.Resize(IMAGE_SIZE)(depth)
             
-        # Random horizontal flipping
-        if 0.5 < random.random():
-            rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
-            depth = T.RandomHorizontalFlip(p=1.0)(depth)
+        if not self.overfit_mode:
+            # Random horizontal flipping
+            if 0.5 < random.random():
+                rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
+                depth = T.RandomHorizontalFlip(p=1.0)(depth)
 
         # TODO: Uncomment the following later, after we see some progress.
         
@@ -165,11 +168,11 @@ class rgbd_gradients_dataset(Dataset):
         # USE THIS ??? torchvision.transforms.functional.perspective(img, startpoints, endpoints, interpolation=3)
         
         # PIL.Image -> torch.Tensor
-        rgb = T.ToTensor()(rgb)
+        rgb   = T.ToTensor()(rgb)
         depth = T.ToTensor()(depth)
         
         # Dynamic range [0,1] -> [-1, 1]
-        rgb = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb)
+        rgb   = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb)
         depth = T.Normalize(mean=(.5,), std=(.5,))(depth)
         
         return rgb, depth
@@ -200,9 +203,7 @@ def rgbd_gradients_dataloader(root, use_transforms=False):
     rgbd_grads_ds = rgbd_gradients_dataset(root, use_transforms=use_transforms)
     split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    TRAIN_TEST_RATIO)),
                      int(np.floor(len(rgbd_grads_ds) * (1-TRAIN_TEST_RATIO)))]
-
     ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
-
     dl_train = torch.utils.data.DataLoader(ds_train,
                                            batch_size=BATCH_SIZE,
                                            num_workers=NUM_WORKERS,
