@@ -1,9 +1,47 @@
 import numpy as np
-import math
+import torch
 import itertools
 import matplotlib.pyplot as plt
+import math
+import copy
 from functions import torch2np_u8
-from lines_utils import line_intersection, get_line, get_2d_rotation_matrix#, bresenham_line
+from lines_utils import line_intersection, get_line, get_2d_rotation_matrix
+
+# ------------------Constants------------------
+ # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
+number_of_frame_pixels_to_ignore = 5
+
+# For the maximum lines' lengths, starting from the gardients' roots, going where each gardient points.
+lines_percentage_of_screen = 0.2 # 0.15 # 0.05 # 0.42
+
+# To ignore "weak" gardients
+ignore_gardients_shorter_than = 0.65 # 0.00001 # 0.6 # 0.5 # 0.7
+
+# After the navigation map is ready (Each pixel's line added it's scores onto it), keep only the strongest pixels (Like max-pooling, keeps only the strongest pixels).
+navigation_percentage_to_keep = 0.15 # 0.5
+
+# When a line runs from it's pixel, directed by it's gardient, how to score each of the line's pixel ?
+# gardient_length: The line's starting score, which fades out as opposite gardients are meeting it along the line.
+# ((1 - (current_line_length / max_line_length)) ** (1 / 2)): Fade out as the line is more far away from it's starting pixel.
+def navigation_score_formula(navigation_image, point, gardient_length, current_line_length, max_line_length):
+    return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+# Other options:
+#     return 1
+#     return navigation_image[point[1]][point[0]] + (gardient_length) * ((1 - (current_line_length / max_line_length)) ** (1 / 10))
+#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - (current_line_length / max_line_length))**(1 / 10)
+#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - current_line_length / max_line_length)
+#     return navigation_image[point[1]][point[0]] + gardient_length
+#     return navigation_image[point[1]][point[0]] + 1
+#     return navigation_image[point[1]][point[0]] + (1 - current_line_length / max_line_length)
+#     return navigation_image[point[1]][point[0]] + current_line_length / max_line_length
+#     return navigation_image[point[1]][point[0]] + gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2))
+#     return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+#     return max(navigation_image[point[1]][point[0]], gardient_length)
+# ------------------End Constants------------------
+
+
+# Fettuccini with Corona sauce below :)
+
 
 def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
     """

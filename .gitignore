@@ -4,6 +4,7 @@ depth/
 rgb/
 raw_datasets/
 __pycache__/
+checkpoints/
 .idea
 .ipynb_checkpoints/
 jupyter-lab.sh

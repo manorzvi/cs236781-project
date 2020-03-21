@@ -43,6 +43,78 @@ def calc_grads(img: torch.Tensor, ksizes:list=[3,5], kweights=[0.7,0.5], grads_d
 
     return grad_x,grad_y
 
+class RandomCropAndResize(object):
+    """Crop randomly the image in a sample, while keeping the aspect ratio, then resize
+    back to the image's original size.
+
+    Args:
+        output_size (tuple or int): Desired output size. If int, square crop
+            is made.
+        minimum_image_precentage_to_look_at(int): Minimum percentage of image to keep after cropping.
+    """
+
+    def __init__(self, output_size, minimum_image_precentage_to_look_at=0.7):
+        assert isinstance(output_size, (int, tuple))
+        assert isinstance(minimum_image_precentage_to_look_at, float)
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+        self.minimum_image_precentage_to_look_at = minimum_image_precentage_to_look_at
+
+    def __call__(self, rgb, depth):
+        image_precentage_to_look_at = random.uniform(self.minimum_image_precentage_to_look_at, 1.0)
+        crop_width = int(image_precentage_to_look_at * self.output_size[1])
+        crop_height = int(image_precentage_to_look_at * self.output_size[0])
+        crop_top = random.randint(0, self.output_size[0] - crop_height)
+        crop_left = random.randint(0, self.output_size[1] - crop_width)
+        rgb = T.functional.resized_crop(rgb, crop_top, crop_left, crop_height, crop_width, self.output_size)
+        depth = T.functional.resized_crop(depth, crop_top, crop_left, crop_height, crop_width, self.output_size)
+        return rgb, depth
+    
+class RotateAndFillCornersWithImageFrameColors(object):
+    """Rotates both image by the same angle, and fills the created corners by the colors of the images' frames
+    pixels.
+
+    Args:
+        output_size (tuple or int): Desired output size. If int, square crop
+            is made.
+        degrees_range(float): Maximum degree to rotate to each side. (degrees_range X 2) = total range
+        frame_removal_length(int): Number of pixels to remove from the images' frames, as they may contain useless colors.
+    """
+
+    def __init__(self, output_size, degrees_range=20, frame_removal_length=3):
+        assert isinstance(output_size, (int, tuple))
+        assert isinstance(degrees_range, (int, float))
+        assert isinstance(frame_removal_length, int)
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+        self.degrees_range = degrees_range
+        self.frame_removal_length = frame_removal_length
+
+    def __call__(self, rgb, depth):
+        padding = max(self.output_size[0], self.output_size[1])
+        rgb = T.functional.resized_crop(rgb, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
+        depth = T.functional.resized_crop(depth, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
+        rgb = T.Pad(padding=padding, fill=0, padding_mode='edge')(rgb)
+        depth = T.Pad(padding=padding, fill=0, padding_mode='edge')(depth)
+        degree_to_rotate = random.uniform(-self.degrees_range, self.degrees_range)
+        # some bug in torchvision, got the solution at:
+        # https://github.com/pytorch/vision/issues/1759
+        # https://www.gitmemory.com/issue/pytorch/vision/1759/575357711
+        #filler = 0.0 if rgb.mode.startswith("F") else 0
+        num_bands = len(rgb.getbands())
+        rgb = T.functional.rotate(img=rgb, angle=degree_to_rotate, fill=(0,) * num_bands)
+        #filler = 0.0 if depth.mode.startswith("F") else 0
+        num_bands = len(depth.getbands())
+        depth = T.functional.rotate(img=depth, angle=degree_to_rotate, fill=(0,) * num_bands)
+        rgb = T.functional.resized_crop(rgb, padding, padding, self.output_size[0], self.output_size[1], self.output_size)
+        depth = T.functional.resized_crop(depth, padding, padding, self.output_size[0], self.output_size[1], self.output_size)
+        return rgb, depth
 
 class rgbd_gradients_dataset(Dataset):
     def __init__(self, root, use_transforms=False):
@@ -63,75 +135,45 @@ class rgbd_gradients_dataset(Dataset):
     def transform(self, rgb, depth):
         # TODO: I really don't understand why to apply every transform you found online,
         #  while we still can't run a single prpper training iteration.
-
+        
         # Resize to constant spatial dimensions
-        rgb   = T.Resize(IMAGE_SIZE)(rgb)
+        rgb = T.Resize(IMAGE_SIZE)(rgb)
         depth = T.Resize(IMAGE_SIZE)(depth)
-
+            
         # Random horizontal flipping
-        if 0.5 < random.random(): #
-            rgb   = T.RandomHorizontalFlip(p=1.0)(rgb)
+        if 0.5 < random.random():
+            rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
             depth = T.RandomHorizontalFlip(p=1.0)(depth)
 
-        # TODO: Uncomment the following later, after we see some progress. Also,
-        #  instead of stacking tons of code in the same function, you can write your own transformer,
-        #  as in: https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
-        # Randomly changes the brightness, contrast and saturation of an image.
-        # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
-        # rgb = T.ColorJitter(
-        #     brightness=abs(0.1 * torch.randn(1).item()),
-        #     contrast=abs(0.1 * torch.randn(1).item()),
-        #     saturation=abs(0.1 * torch.randn(1).item()),
-        #     hue=abs(0.1 * torch.randn(1).item())
-        # )(rgb)
-
-        # Crops and resizes back to IMAGE_SIZE
-        # minimum_image_precentage_to_look_at = 0.7
-        # image_precentage_to_look_at = random.uniform(minimum_image_precentage_to_look_at, 1.0)
-        # crop_width = int(image_precentage_to_look_at * IMAGE_SIZE[1])
-        # crop_height = int(image_precentage_to_look_at * IMAGE_SIZE[0])
-        # crop_top = random.randint(0, IMAGE_SIZE[0] - crop_height)
-        # crop_left = random.randint(0, IMAGE_SIZE[1] - crop_width)
-        # rgb = T.functional.resized_crop(rgb, crop_top, crop_left, crop_height, crop_width, IMAGE_SIZE)
-        # depth = T.functional.resized_crop(depth, crop_top, crop_left, crop_height, crop_width, IMAGE_SIZE)
-
-        # Rotation
-        # degrees_range = 20  # (degrees_range X 2) = range
-        # padding = max(IMAGE_SIZE[0], IMAGE_SIZE[1])
-        # frame_removal_length = 3
-        # rgb = T.functional.resized_crop(rgb, frame_removal_length, frame_removal_length,
-        #                                 IMAGE_SIZE[0] - 2 * frame_removal_length,
-        #                                 IMAGE_SIZE[1] - 2 * frame_removal_length, IMAGE_SIZE)
-        # depth = T.functional.resized_crop(depth, frame_removal_length, frame_removal_length,
-        #                                   IMAGE_SIZE[0] - 2 * frame_removal_length,
-        #                                   IMAGE_SIZE[1] - 2 * frame_removal_length, IMAGE_SIZE)
-        # rgb = T.Pad(padding=padding, fill=0, padding_mode='edge')(rgb)
-        # depth = T.Pad(padding=padding, fill=0, padding_mode='edge')(depth)
-        # degree_to_rotate = random.uniform(-degrees_range, degrees_range)
-        # # some bug in torchvision, got the solution at:
-        # # https://github.com/pytorch/vision/issues/1759
-        # # https://www.gitmemory.com/issue/pytorch/vision/1759/575357711
-        # # filler = 0.0 if rgb.mode.startswith("F") else 0
-        # num_bands = len(rgb.getbands())
-        # rgb = T.functional.rotate(img=rgb, angle=degree_to_rotate, fill=(0,) * num_bands)
-        # # filler = 0.0 if depth.mode.startswith("F") else 0
-        # num_bands = len(depth.getbands())
-        # depth = T.functional.rotate(img=depth, angle=degree_to_rotate, fill=(0,) * num_bands)
-        # rgb = T.functional.resized_crop(rgb, padding, padding, IMAGE_SIZE[0], IMAGE_SIZE[1], IMAGE_SIZE)
-        # depth = T.functional.resized_crop(depth, padding, padding, IMAGE_SIZE[0], IMAGE_SIZE[1], IMAGE_SIZE)
-
+        # TODO: Uncomment the following later, after we see some progress.
+        
+#         # Randomly changes the brightness, contrast and saturation of an image.
+#         # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
+#         rgb = T.ColorJitter(
+#             brightness=abs(0.1 * torch.randn(1).item()),
+#             contrast=abs(0.1 * torch.randn(1).item()),
+#             saturation=abs(0.1 * torch.randn(1).item()),
+#             hue=abs(0.1 * torch.randn(1).item())
+#         )(rgb)
+        
+#         # Crops and resizes back to IMAGE_SIZE
+#         rgb, depth = RandomCropAndResize(output_size=IMAGE_SIZE, minimum_image_precentage_to_look_at=0.7)(rgb, depth)
+        
+#         # Rotation
+#         rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=IMAGE_SIZE, degrees_range=20, frame_removal_length=3)(rgb, depth)
+    
         # USE THIS ??? torchvision.transforms.functional.perspective(img, startpoints, endpoints, interpolation=3)
-
+        
         # PIL.Image -> torch.Tensor
-        rgb   = T.ToTensor()(rgb)
+        rgb = T.ToTensor()(rgb)
         depth = T.ToTensor()(depth)
-
+        
         # Dynamic range [0,1] -> [-1, 1]
-        rgb   = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
+        rgb = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb)
         depth = T.Normalize(mean=(.5,), std=(.5,))(depth)
-
+        
         return rgb, depth
-
+    
     def __getitem__(self, index):
 
         rgb_path   = os.path.join(self.root, "rgb",   self.rgbs[index])
