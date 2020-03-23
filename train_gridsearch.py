@@ -74,9 +74,11 @@ def grid_search(combinations:list):
         # Train
         if OVERFITTING_TRAINING:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
+                                               sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
                                                device=device, dropout_p=0)
         else:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
+                                               sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
                                                device=device)
 
         trainer = FuseNetTrainer(model=fusenetmodel, device=device, num_epochs=num_epochs)
@@ -100,21 +102,20 @@ if __name__ == '__main__':
     OVERFITTING_TRAINING = False
     print(f'[I] - Overfitting Mode: {OVERFITTING_TRAINING}')
 
-    # IMAGE_SIZE           = [(64, 64), (224, 224)]
-    IMAGE_SIZE           = [(64, 64)]
+    IMAGE_SIZE           = [(64, 64), (224, 224)]
     TRAIN_TEST_RATIO     = [0.9]
     BATCH_SIZE           = [4, 16, 32, 64]
     NUM_WORKERS          = [4]
 
     BETAS                = [(0.9, 0.99)]
-    LR                   = [0.001]
-    MOMENTUM             = [0.9]
+    LR                   = [0.001, 0.01]
+    MOMENTUM             = [0.9, 0.99]
     WEIGHT_DECAY         = [0.0005]
 
     STEP_SIZE            = [1000]
     GAMMA                = [0.1]
 
-    NUM_EPOCHS           = [2]
+    NUM_EPOCHS           = [400]
 
     if OVERFITTING_TRAINING:
         DATASET_DIR      = os.path.join(cwd, overfit_data_dir_path)

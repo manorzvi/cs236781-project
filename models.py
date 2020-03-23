@@ -219,7 +219,8 @@ class SpecialFuseNet(nn.Module):
 
 
 class SpecialFuseNetModel():
-    def __init__(self, device=None, rgb_size=None,depth_size=None,grads_size=None,
+    def __init__(self, sgd_lr=0.001, sgd_momentum=0.9, sgd_wd=0.0005,
+                 device=None, rgb_size=None,depth_size=None,grads_size=None,
                  seed=42, dropout_p=0.4, optimizer=None, scheduler=None):
         assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
         assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
@@ -248,9 +249,9 @@ class SpecialFuseNetModel():
         if optimizer:
             self.optimizer = optimizer
         else:
-            lr           = 0.001 # HyperParameters from the paper
-            momentum     = 0.9
-            weight_decay = 0.0005
+            lr           = sgd_lr
+            momentum     = sgd_momentum
+            weight_decay = sgd_wd
             print(f'[I] - default optimizer set: SGD(lr={lr},momentum={momentum},weight_decay={weight_decay})')
             self.optimizer = optim.SGD(self.net.parameters(),
                                        lr=lr, momentum=momentum, weight_decay=weight_decay)
