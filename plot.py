@@ -38,8 +38,8 @@ def post_epoch_plot(model:SpecialFuseNetModel, device:torch.device, dl_test:Data
 
     rgb_minibatch   = rgb_minibatch.to(device)
     depth_minibatch = depth_minibatch.to(device)
-    x_gt_minibatch = x_gt_minibatch.to(device)
-    y_gt_minibatch = y_gt_minibatch.to(device)
+    x_gt_minibatch  = x_gt_minibatch.to(device)
+    y_gt_minibatch  = y_gt_minibatch.to(device)
     xy_gt_minibatch = torch.cat((x_gt_minibatch, y_gt_minibatch), dim=1)
 
     model.set_requires_grad(requires_grad=False)
@@ -50,9 +50,9 @@ def post_epoch_plot(model:SpecialFuseNetModel, device:torch.device, dl_test:Data
     x_minibatch = xy_minibatch[:,0,:,:]
     y_minibatch = xy_minibatch[:,1,:,:]
     if len(x_minibatch.shape) == 3:
-        x_minibatch = x_minibatch[None,:,:,:]
+        x_minibatch = x_minibatch[:,None,:,:]
     if len(y_minibatch.shape) == 3:
-        y_minibatch = y_minibatch[None,:,:,:]
+        y_minibatch = y_minibatch[:,None,:,:]
 
     nrows = rgb_minibatch.shape[0]
     ncols = 4
@@ -62,6 +62,13 @@ def post_epoch_plot(model:SpecialFuseNetModel, device:torch.device, dl_test:Data
                              subplot_kw={'aspect': 1})
     # fig.suptitle('MiniBatch Loss: {:4f}'.format(loss), fontsize=12)
 
+    # print(f'|rgb_minibatch|={rgb_minibatch.shape}')
+    # print(f'|depth_minibatch|={depth_minibatch.shape}')
+    # print(f'|x_gt_minibatch|={x_gt_minibatch.shape}')
+    # print(f'|y_gt_minibatch|={y_gt_minibatch.shape}')
+    # print(f'|x_minibatch|={x_minibatch.shape}')
+    # print(f'|y_minibatch|={y_minibatch.shape}')
+
     if nrows > 1:
         for i in range(nrows):
             rgb   = rgb_minibatch[i,:,:,:]
@@ -70,6 +77,13 @@ def post_epoch_plot(model:SpecialFuseNetModel, device:torch.device, dl_test:Data
             y_gt  = y_gt_minibatch[i,:,:,:].squeeze(0)
             x     = x_minibatch[i,:,:,:].squeeze(0)
             y     = y_minibatch[i,:,:,:].squeeze(0)
+
+            # print(f'|rgb|={rgb.shape}')
+            # print(f'|depth|={depth.shape}')
+            # print(f'|x_gt|={x_gt.shape}')
+            # print(f'|y_gt|={y_gt.shape}')
+            # print(f'|x|={x.shape}')
+            # print(f'|y|={y.shape}')
 
             rgb   = torch2np_u8(rgb)
             depth = torch2np_u8(depth)

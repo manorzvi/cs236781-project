@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 import os
+from copy import deepcopy
 import cv2
 import random
 import PIL
-from hyperparameters import *
 from torchvision import transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
@@ -117,11 +117,12 @@ class RotateAndFillCornersWithImageFrameColors(object):
         return rgb, depth
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, use_transforms=False, overfit_mode=False):
+    def __init__(self, root, image_size, use_transforms=False, overfit_mode=False):
 
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
+        self.image_size       = image_size
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -139,8 +140,8 @@ class rgbd_gradients_dataset(Dataset):
         #  while we still can't run a single proper training iteration.
         
         # Resize to constant spatial dimensions
-        rgb   = T.Resize(IMAGE_SIZE)(rgb)
-        depth = T.Resize(IMAGE_SIZE)(depth)
+        rgb   = T.Resize(self.image_size)(rgb)
+        depth = T.Resize(self.image_size)(depth)
             
         if not self.overfit_mode:
             # Random horizontal flipping
@@ -199,39 +200,25 @@ class rgbd_gradients_dataset(Dataset):
         return self.len
 
 
-def rgbd_gradients_dataloader(root, use_transforms=False):
-    rgbd_grads_ds = rgbd_gradients_dataset(root, use_transforms=use_transforms)
-    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    TRAIN_TEST_RATIO)),
-                     int(np.floor(len(rgbd_grads_ds) * (1-TRAIN_TEST_RATIO)))]
-    ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
-    dl_train = torch.utils.data.DataLoader(ds_train,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=NUM_WORKERS,
-                                           shuffle=True)
-    dl_test  = torch.utils.data.DataLoader(ds_test,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=NUM_WORKERS,
-                                           shuffle=True)
-    return (dl_train, dl_test)
-
-
-if __name__ == '__main__':
-
-    CONST_NUMBER_OF_GPUS = torch.cuda.device_count()
-    DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    print(f'DEVICE={DEVICE}')
-    print(f"GPU's={CONST_NUMBER_OF_GPUS}")
-
-    pwd = os.getcwd()
-    data_dir = os.path.join(pwd, 'data', 'nyuv2')
-
-    rgb_dir = os.path.join(data_dir, 'rgb')
-    depth_dir = os.path.join(data_dir, 'depth')
-    gradx_dir = os.path.join(data_dir, 'x/')
-    grady_dir = os.path.join(data_dir, 'y/')
-    print(f'{rgb_dir}\n{depth_dir}\n{gradx_dir}\n{grady_dir}')
-
-    batch_size = 64
-    # Set CONST_NUMBER_OF_GPUS above,
-    # found this formula in https://discuss.pytorch.org/t/guidelines-for-assigning-num-workers-to-dataloader/813/5
-    num_workers = 4 * CONST_NUMBER_OF_GPUS
+def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size,
+                              use_transforms=False, overfit_mode=False):
+    rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode)
+    if not overfit_mode:
+        split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
+                         int(np.floor(len(rgbd_grads_ds) * (1-train_test_ratio)))]
+        ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
+        dl_train = torch.utils.data.DataLoader(ds_train,
+                                               batch_size=batch_size,
+                                               num_workers=num_workers,
+                                               shuffle=True)
+        dl_test  = torch.utils.data.DataLoader(ds_test,
+                                               batch_size=batch_size,
+                                               num_workers=num_workers,
+                                               shuffle=True)
+        return (dl_train, dl_test)
+    else:
+        dl_overfit = torch.utils.data.DataLoader(rgbd_grads_ds,
+                                                 batch_size=batch_size,
+                                                 num_workers=num_workers,
+                                                 shuffle=True)
+        return (dl_overfit, deepcopy(dl_overfit)) # dl_train & dl_test equals and consist of a single image.
