@@ -33,17 +33,17 @@ def grid_search(combinations:list):
         checkpoint_hp_file        = os.path.join(cwd, checkpoint_folder, checkpoint_file_name + '_hp')
 
         if os.path.isfile(f'{checkpoint_file}.pt'):
-            print(f'[I] - {checkpoint_file} exist')
+            print(f'[I] - {checkpoint_file}.pt exist')
             os.remove(f'{checkpoint_file}.pt')
-        if os.path.isfile(f'{checkpoint_res_file}.pt'):
-            print(f'[I] - {checkpoint_res_file} exist')
-            os.remove(f'{checkpoint_res_file}.pt')
+        if os.path.isfile(f'{checkpoint_res_file}.pkl'):
+            print(f'[I] - {checkpoint_res_file}.pkl exist')
+            os.remove(f'{checkpoint_res_file}.pkl')
         if os.path.isfile(f'{checkpoint_hp_file}.py'):
-            print(f'[I] - {checkpoint_hp_file} exist')
+            print(f'[I] - {checkpoint_hp_file}.py exist')
             os.remove(f'{checkpoint_hp_file}.py')
 
-        os.makedirs(os.path.dirname(checkpoint_hp_file), exist_ok=True)
-        with open(checkpoint_hp_file, "w") as hpf:
+        os.makedirs(os.path.dirname(checkpoint_hp_file)+'.py', exist_ok=True)
+        with open(checkpoint_hp_file+'.py', "w") as hpf:
             print(f"IMAGE_SIZE={image_size}",               file=hpf)
             print(f"TRAIN_TEST_RATIO={train_test_ratio}",   file=hpf)
             print(f"BATCH_SIZE={batch_size}",               file=hpf)
@@ -58,7 +58,7 @@ def grid_search(combinations:list):
 
         print("[I] - Current Hyper-Parameters:\n"
               "-------------------------------")
-        with open(checkpoint_hp_file, "r") as hpf:
+        with open(checkpoint_hp_file+'.py', "r") as hpf:
             print(hpf.read())
 
         dl_train, dl_test = rgbd_gradients_dataloader(root=DATASET_DIR, use_transforms=True,
@@ -128,7 +128,6 @@ if __name__ == '__main__':
     all_combintations = list(itertools.product(*[IMAGE_SIZE, TRAIN_TEST_RATIO, BATCH_SIZE,
                                                  NUM_WORKERS, BETAS, LR, MOMENTUM,
                                                  WEIGHT_DECAY, STEP_SIZE, GAMMA, NUM_EPOCHS]))
-    print(type(all_combintations))
     print(f'[I] - All Hyperparameters Combinations:\n'
           f'---------------------------------------')
     pprint(all_combintations)
