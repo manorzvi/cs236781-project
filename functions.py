@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import os
-import shutil
 from torch.nn import init
 from hyperparameters import *
 

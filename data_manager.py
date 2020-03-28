@@ -118,7 +118,10 @@ class RotateAndFillCornersWithImageFrameColors(object):
 
 class rgbd_gradients_dataset(Dataset):
     def __init__(self, root, image_size, use_transforms=False, overfit_mode=False):
-
+        print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
+              f'                             - image_size={image_size}\n'
+              f'                             - use_transforms={use_transforms}\n'
+              f'                             - overfit_mode={overfit_mode}\n')
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
@@ -201,12 +204,28 @@ class rgbd_gradients_dataset(Dataset):
 
 
 def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size,
-                              use_transforms=False, overfit_mode=False):
+                              use_transforms=False, overfit_mode=False, seed=42):
+    print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
+          f'                                - batch_size={batch_size}\n'
+          f'                                - num_workers={num_workers}\n'
+          f'                                - train_test_ratio={train_test_ratio}\n'
+          f'                                - image_size={image_size}\n'
+          f'                                - use_transforms={use_transforms}\n'
+          f'                                - overfit_mode={overfit_mode}\n'
+          f'                                - seed={seed}\n')
+
+    torch.manual_seed(seed)
+
     rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode)
+
     if not overfit_mode:
         split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
                          int(np.floor(len(rgbd_grads_ds) * (1-train_test_ratio)))]
+
+        # NOTE: Don't forget to set the seed in order to maintain reproducibility over training experiments.
         ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
+
+        print(f'[I (rgbd_gradients_dataloader)] - |Train Dataset|={len(ds_train)}, |Test Dataset|={len(ds_test)}')
         dl_train = torch.utils.data.DataLoader(ds_train,
                                                batch_size=batch_size,
                                                num_workers=num_workers,
@@ -221,4 +240,5 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
                                                  batch_size=batch_size,
                                                  num_workers=num_workers,
                                                  shuffle=True)
+        print(f'[I (rgbd_gradients_dataloader)] - |Dataset|={len(rgbd_grads_ds)}')
         return (dl_overfit, deepcopy(dl_overfit)) # dl_train & dl_test equals and consist of a single image.

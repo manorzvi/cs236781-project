@@ -15,7 +15,7 @@ from data_manager import rgbd_gradients_dataset, rgbd_gradients_dataloader
 from functions import make_ckpt_fname
 
 class FuseNetTrainer():
-    def __init__(self, model:SpecialFuseNetModel, num_epochs:int=400, device:torch.device=None):
+    def __init__(self, model:SpecialFuseNetModel, num_epochs:int=400, device:torch.device=None, seed=42):
         """
         Initialize the trainer.
         :param model: Instance of the model to train.
@@ -23,6 +23,13 @@ class FuseNetTrainer():
         """
         assert isinstance(model,SpecialFuseNetModel), "model type is not supported"
         assert isinstance(device, torch.device),      "Please provide device as torch.device"
+
+        print(f'[I (FuseNetTrainer)] - model={model}\n'
+              f'                     - num_epochs={num_epochs}\n'
+              f'                     - device={device}\n',
+              f'                     - seed={seed}\n')
+
+        torch.manual_seed(42)
 
         self.model       = model
         self.device      = device
@@ -115,7 +122,9 @@ class FuseNetTrainer():
         """
 
         self.model.net.train(True)  # set train mode
-        self.model.set_requires_grad(requires_grad=True)
+        # self.model.set_requires_grad(requires_grad=True)
+        # self.model.set_dropout_train(train=True)
+        # self.model.set_batchnorms_train(train=True)
         return self._foreach_batch(dl_train, self.train_batch, **kw)
 
     def test_epoch(self, dl_test: DataLoader, **kw) -> EpochResult:
@@ -126,8 +135,11 @@ class FuseNetTrainer():
         :return: An EpochResult for the epoch.
         """
 
-        # self.model.net.train(False)  # set evaluation (test) mode
-        self.model.set_requires_grad(requires_grad=False)
+        self.model.net.train(False)  # set evaluation (test) mode
+        # self.model.net.eval()
+        # self.model.set_requires_grad(requires_grad=False)
+        # self.model.set_dropout_train(train=False)
+        # self.model.set_batchnorms_train(train=False)
         return self._foreach_batch(dl_test, self.test_batch, **kw)
 
     def train_batch(self, batch) -> BatchResult:

@@ -33,14 +33,17 @@ def grid_search(combinations:list):
         checkpoint_hp_file        = os.path.join(cwd, checkpoint_folder, checkpoint_file_name + '_hp')
 
         if os.path.isfile(f'{checkpoint_file}.pt'):
-            print(f'[I] - {checkpoint_file}.pt exist')
+            print(f'[I] - {checkpoint_file}.pt exist ... remove ', end='')
             os.remove(f'{checkpoint_file}.pt')
+            print('done.')
         if os.path.isfile(f'{checkpoint_res_file}.pkl'):
-            print(f'[I] - {checkpoint_res_file}.pkl exist')
+            print(f'[I] - {checkpoint_res_file}.pkl exist ... remove ', end='')
             os.remove(f'{checkpoint_res_file}.pkl')
+            print('done.')
         if os.path.isfile(f'{checkpoint_hp_file}.py'):
-            print(f'[I] - {checkpoint_hp_file}.py exist')
+            print(f'[I] - {checkpoint_hp_file}.py exist ... remove ', end='')
             os.remove(f'{checkpoint_hp_file}.py')
+            print('done.')
 
         os.makedirs(os.path.dirname(checkpoint_hp_file)+'.py', exist_ok=True)
         with open(checkpoint_hp_file+'.py', "w") as hpf:
@@ -71,15 +74,14 @@ def grid_search(combinations:list):
         grads_size        = tuple(sample_batch['x'].shape[1:])
         print(f'[I] - RGB SIZE={rgb_size}, DEPTH SIZE={depth_size}, GRADS SIZE={grads_size}')
 
-        # Train
         if OVERFITTING_TRAINING:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
                                                sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
-                                               device=device, dropout_p=0)
+                                               device=device, overfit_mode=OVERFITTING_TRAINING, dropout_p=0)
         else:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
                                                sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
-                                               device=device)
+                                               device=device, overfit_mode=OVERFITTING_TRAINING)
 
         trainer = FuseNetTrainer(model=fusenetmodel, device=device, num_epochs=num_epochs)
 
@@ -98,12 +100,12 @@ if __name__ == '__main__':
     overfit_data_dir_path    = 'data/nyuv2_overfit'
     normal_data_dir_path     = 'data/nyuv2'
 
-    # OVERFITTING_TRAINING = True
-    OVERFITTING_TRAINING = False
+    OVERFITTING_TRAINING = True
+    # OVERFITTING_TRAINING = False
     print(f'[I] - Overfitting Mode: {OVERFITTING_TRAINING}')
 
     IMAGE_SIZE           = [(64, 64), (224, 224)]
-    TRAIN_TEST_RATIO     = [0.9]
+    TRAIN_TEST_RATIO     = [0.8]
     BATCH_SIZE           = [4, 16, 32, 64]
     NUM_WORKERS          = [4]
 
@@ -119,8 +121,6 @@ if __name__ == '__main__':
 
     if OVERFITTING_TRAINING:
         DATASET_DIR      = os.path.join(cwd, overfit_data_dir_path)
-        NUM_EPOCHS       = [50]
-        TRAIN_TEST_RATIO = [0.5]
     else:
         DATASET_DIR      = os.path.join(cwd, normal_data_dir_path)
     print(f'[I] - DATASET_DIR: {DATASET_DIR}')
