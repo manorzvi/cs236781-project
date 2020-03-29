@@ -85,7 +85,7 @@ def grid_search(combinations:list):
 
         trainer = FuseNetTrainer(model=fusenetmodel, device=device, num_epochs=num_epochs)
 
-        res = trainer.fit(dl_train, dl_test, early_stopping=20, print_every=10, checkpoints=checkpoint_file)
+        res = trainer.fit(dl_train, dl_test, early_stopping=50, print_every=10, checkpoints=checkpoint_file)
 
         res.save(checkpoint_res_file)
 
@@ -106,11 +106,11 @@ if __name__ == '__main__':
 
     IMAGE_SIZE           = [(64, 64), (224, 224)]
     TRAIN_TEST_RATIO     = [0.8]
-    BATCH_SIZE           = [4, 16, 32, 64]
+    BATCH_SIZE           = [4, 16, 32]
     NUM_WORKERS          = [4]
 
     BETAS                = [(0.9, 0.99)]
-    LR                   = [0.001, 0.01]
+    LR                   = [0.001, 0.01, 0.1]
     MOMENTUM             = [0.9, 0.99]
     WEIGHT_DECAY         = [0.0005]
 
