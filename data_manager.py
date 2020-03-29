@@ -149,7 +149,7 @@ class rgbd_gradients_dataset(Dataset):
         if not self.overfit_mode:
             # Random horizontal flipping
             if 0.5 < random.random():
-                rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
+                rgb   = T.RandomHorizontalFlip(p=1.0)(rgb)
                 depth = T.RandomHorizontalFlip(p=1.0)(depth)
 
         # TODO: Uncomment the following later, after we see some progress.
