@@ -100,8 +100,8 @@ if __name__ == '__main__':
     overfit_data_dir_path    = 'data/nyuv2_overfit'
     normal_data_dir_path     = 'data/nyuv2'
 
-    OVERFITTING_TRAINING = True
-    # OVERFITTING_TRAINING = False
+    # OVERFITTING_TRAINING = True
+    OVERFITTING_TRAINING = False
     print(f'[I] - Overfitting Mode: {OVERFITTING_TRAINING}')
 
     IMAGE_SIZE           = [(64, 64), (224, 224)]
