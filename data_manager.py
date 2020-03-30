@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 import os
+from copy import deepcopy
 import cv2
 import random
 import PIL
-from hyperparameters import *
 from torchvision import transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
@@ -14,27 +14,26 @@ from torch.utils.data import DataLoader
 def one_one_normalization(data):
     return 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
 
-def calc_grads(img: torch.Tensor, ksizes_and_weights=[{"ksize": 5, "weight": 1.0}], grads_degree=1, normalization=True):
+def calc_grads(img: torch.Tensor, ksizes:list=[3,5], kweights=[0.7,0.5], grads_degree=1, normalization=True):
     assert isinstance(img,torch.Tensor)
-    
-    # Use weighted average ksizes
+    assert isinstance(ksizes,list) and isinstance(kweights, list)
     img_np = img.cpu().numpy().squeeze()
-    grad_x = np.zeros(img_np.shape, dtype=np.float64)
-    grad_y = np.zeros(img_np.shape, dtype=np.float64)
-    for ksize_and_weight in ksizes_and_weights:
-        grad_x = np.add(grad_x, ksize_and_weight["weight"] * cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksize_and_weight["ksize"]))
-        grad_y = np.add(grad_y, ksize_and_weight["weight"] * cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksize_and_weight["ksize"]))
-
+    # grad_x = cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=ksizes[0])
+    # grad_y = cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=ksizes[0])
+    for i,(size,weight) in enumerate(zip(ksizes,kweights)):
+        if i == 0:
+            grad_x = weight * cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=size)
+            grad_y = weight * cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=size)
+        else:
+            grad_x += weight * cv2.Sobel(img_np, cv2.CV_64F, grads_degree, 0, ksize=size)
+            grad_y += weight * cv2.Sobel(img_np, cv2.CV_64F, 0, grads_degree, ksize=size)
     if normalization:
         grad_x = one_one_normalization(grad_x)
         grad_y = one_one_normalization(grad_y)
-
     grad_x = np.expand_dims(grad_x, axis=2)
     grad_y = np.expand_dims(grad_y, axis=2)
-
     grad_x = T.ToTensor()(grad_x).type(torch.float32)
     grad_y = T.ToTensor()(grad_y).type(torch.float32)
-
     return grad_x,grad_y
 
 class RandomCropAndResize(object):
@@ -111,97 +110,52 @@ class RotateAndFillCornersWithImageFrameColors(object):
         return rgb, depth
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, use_transforms=False):
+    def __init__(self, root, image_size, constant_index, overfit_mode=False):
         self.root             = root
-        self.use_transforms   = use_transforms
-
-        # load all image files, sorting them to
-        # ensure that they are aligned
-        self.rgbs   = list(sorted(os.listdir(os.path.join(root, 'rgb'))))
-        self.depths = list(sorted(os.listdir(os.path.join(root, 'depth'))))
-
+        self.overfit_mode     = overfit_mode
+        self.image_size       = image_size
+        self.rgbs   = list(sorted(os.listdir(os.path.join(root, 'rgb'))))# load all image files, sorting them to
+        self.depths = list(sorted(os.listdir(os.path.join(root, 'depth'))))# ensure that they are aligned
         if not (len(self.rgbs) == len(self.depths)):
-            raise Exception("Non-equal number of samples from each kind.")
-
-        self.len = len(self.rgbs)
-
-    # def __load_image__(self, path):
-    #     # TODO: Ask Haim. I think it would harm performances due to memory shortage &
-    #     #  the need to search the dictionary on each call instead of just to load an image when it needed)
-    #     #  (manorz, 03/06/20)
-    #     if path not in self.RAM_images: # Saves to RAM, to prevent a hard drive bottleneck.
-    #         self.RAM_images[path] = Image.open(path + ".png")
-    #         if self.transform:
-    #             self.RAM_images[path] = self.transform(self.RAM_images[path])
-    #     return self.RAM_images[path]
-
-    # def __load_gradient__(self, path):
-    #     if path not in self.RAM_gardients: # Saves to RAM, to prevent a hard drive bottleneck.
-    #         self.RAM_gardients[path] = torch.from_numpy(np.load(path + ".npy"))
-    #     return self.RAM_gardients[path]
-
+            raise Exception(f"Non-equal number of samples from each kind "
+                            f"(|rgbs|={len(self.rgbs)} != |depths|={len(self.depths)})")
+        self.constant_index = constant_index
+        if 0 <= self.constant_index:
+            self.len = 1
+        else:
+            self.len = len(self.rgbs)
     def transform(self, rgb, depth):
-        # TODO: I really don't understand why to apply every transform you found online,
-        #  while we still can't run a single prpper training iteration.
-        
-        # Resize to constant spatial dimensions
-        rgb = T.Resize(IMAGE_SIZE)(rgb)
-        depth = T.Resize(IMAGE_SIZE)(depth)
-            
-        # Random horizontal flipping
-        if 0.5 < random.random():
-            rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
-            depth = T.RandomHorizontalFlip(p=1.0)(depth)
-
-        # TODO: Uncomment the following later, after we see some progress.
-        
-#         # Randomly changes the brightness, contrast and saturation of an image.
-#         # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
-#         rgb = T.ColorJitter(
-#             brightness=abs(0.1 * torch.randn(1).item()),
-#             contrast=abs(0.1 * torch.randn(1).item()),
-#             saturation=abs(0.1 * torch.randn(1).item()),
-#             hue=abs(0.1 * torch.randn(1).item())
-#         )(rgb)
-        
-#         # Crops and resizes back to IMAGE_SIZE
-#         rgb, depth = RandomCropAndResize(output_size=IMAGE_SIZE, minimum_image_precentage_to_look_at=0.7)(rgb, depth)
-        
-#         # Rotation
-#         rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=IMAGE_SIZE, degrees_range=20, frame_removal_length=3)(rgb, depth)
-    
+        if not self.overfit_mode:
+            if 0.5 < random.random():
+                rgb = T.RandomHorizontalFlip(p=1.0)(rgb)
+                depth = T.RandomHorizontalFlip(p=1.0)(depth)
+        # Randomly changes the brightness, contrast and saturation of an image.
+        # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
+        rgb = T.ColorJitter(
+            brightness=abs(0.1 * torch.randn(1).item()),
+            contrast=abs(0.1 * torch.randn(1).item()),
+            saturation=abs(0.1 * torch.randn(1).item()),
+            hue=abs(0.1 * torch.randn(1).item())
+        )(rgb)
+        rgb, depth = RandomCropAndResize(output_size=self.image_size, minimum_image_precentage_to_look_at=0.7)(rgb, depth)
+        rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=self.image_size, degrees_range=20, frame_removal_length=3)(rgb, depth)
         # USE THIS ??? torchvision.transforms.functional.perspective(img, startpoints, endpoints, interpolation=3)
-        
-        # PIL.Image -> torch.Tensor
-        rgb = T.ToTensor()(rgb)
-        depth = T.ToTensor()(depth)
-        
-        # Dynamic range [0,1] -> [-1, 1]
-        rgb = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb)
-        depth = T.Normalize(mean=(.5,), std=(.5,))(depth)
-        
         return rgb, depth
     
     def __getitem__(self, index):
-        # TODO: Uncomment if decided that the RAM thing above is better than standard implementation. (manorz, 03/06/20)
-        # X_rgb   = self.__load_image__(self.rgb_dir + str(index))
-        # X_depth = self.__load_image__(self.depth_dir + str(index))
-        # Y_x     = self.__load_gradient__(self.gradx_dir + str(index))
-        # Y_y     = self.__load_gradient__(self.grady_dir + str(index))
-
-        rgb_path   = os.path.join(self.root, "rgb",   self.rgbs[index])
-        d_path     = os.path.join(self.root, "depth", self.depths[index])
-
-        rgb   = Image.open(rgb_path)
-        d     = Image.open(d_path)
-
-        if self.use_transforms:
-            rgb, d = self.transform(rgb, d)
-
-#         x,y = calc_grads(d)
-        x,y = calc_grads(d, ksizes_and_weights=[{"ksize": 3, "weight": 0.7},
-                                                {"ksize": 5, "weight": 0.3}])
-
+        if 0 <= self.constant_index:
+            index = self.constant_index
+        rgb   = Image.open(os.path.join(self.root, "rgb",   self.rgbs[index]))
+        d     = Image.open(os.path.join(self.root, "depth", self.depths[index]))
+        # Resize to constant spatial dimensions
+        rgb = T.Resize(self.image_size)(rgb)
+        d = T.Resize(self.image_size)(d)
+        rgb, d = self.transform(rgb, d)
+        rgb = T.ToTensor()(rgb)
+        rgb = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb) # Dynamic range [0,1] -> [-1, 1]
+        d = T.ToTensor()(d)
+        d = T.Normalize(mean=(.5,), std=(.5,))(d) # Dynamic range [0,1] -> [-1, 1]
+        x,y = calc_grads(d)
         return {'rgb': rgb,
                 'depth': d,
                 'x'    : x,
@@ -210,40 +164,32 @@ class rgbd_gradients_dataset(Dataset):
     def __len__(self):
         return self.len
 
-def rgbd_gradients_dataloader(root, use_transforms=False):
-    rgbd_grads_ds = rgbd_gradients_dataset(root, use_transforms=use_transforms)
-    split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    TRAIN_TEST_RATIO)),
-                     int(np.floor(len(rgbd_grads_ds) * (1-TRAIN_TEST_RATIO)))]
-
-    ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
-
-    dl_train = torch.utils.data.DataLoader(ds_train,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=NUM_WORKERS,
-                                           shuffle=True)
-    dl_test  = torch.utils.data.DataLoader(ds_test,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=NUM_WORKERS,
-                                           shuffle=True)
-    return (dl_train, dl_test)
-
-if __name__ == '__main__':
-
-    CONST_NUMBER_OF_GPUS = torch.cuda.device_count()
-    DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    print(f'DEVICE={DEVICE}')
-    print(f"GPU's={CONST_NUMBER_OF_GPUS}")
-
-    pwd = os.getcwd()
-    data_dir = os.path.join(pwd, 'data', 'nyuv2')
-
-    rgb_dir = os.path.join(data_dir, 'rgb')
-    depth_dir = os.path.join(data_dir, 'depth')
-    gradx_dir = os.path.join(data_dir, 'x/')
-    grady_dir = os.path.join(data_dir, 'y/')
-    print(f'{rgb_dir}\n{depth_dir}\n{gradx_dir}\n{grady_dir}')
-
-    batch_size = 64
-    # Set CONST_NUMBER_OF_GPUS above,
-    # found this formula in https://discuss.pytorch.org/t/guidelines-for-assigning-num-workers-to-dataloader/813/5
-    num_workers = 4 * CONST_NUMBER_OF_GPUS
+def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size, constant_index, evaluage=False, overfit_mode=False):
+    if 0 <= constant_index:
+        train_test_ratio=0.5
+    rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, overfit_mode=overfit_mode, constant_index=constant_index)
+    if overfit_mode:
+        dl_overfit = torch.utils.data.DataLoader(rgbd_grads_ds,
+                                         batch_size=batch_size,
+                                         num_workers=num_workers,
+                                         shuffle=True)
+        return (dl_overfit, deepcopy(dl_overfit)) # dl_train & dl_test equals and consist of a single image.
+    else:
+        if 0 <= constant_index:
+            split_lengths = [0, 1]
+        else:
+            split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
+                             int(np.floor(len(rgbd_grads_ds) * (1-train_test_ratio)))]
+        ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
+        if constant_index < 0:
+            dl_train = torch.utils.data.DataLoader(ds_train,
+                                                   batch_size=batch_size,
+                                                   num_workers=num_workers,
+                                                   shuffle=True)
+        else:
+            dl_train = None
+        dl_test  = torch.utils.data.DataLoader(ds_test,
+                                               batch_size=batch_size,
+                                               num_workers=num_workers,
+                                               shuffle=True)
+        return (dl_train, dl_test)

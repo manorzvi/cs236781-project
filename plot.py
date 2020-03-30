@@ -1,9 +1,164 @@
 import numpy as np
-import math
 import itertools
 import matplotlib.pyplot as plt
+import math
+
+import torch
+from torch.utils.data import DataLoader
+import torchvision.utils as vutils
+
 from functions import torch2np_u8
-from lines_utils import line_intersection, get_line, get_2d_rotation_matrix#, bresenham_line
+from lines_utils import line_intersection, get_line, get_2d_rotation_matrix
+from models import SpecialFuseNetModel
+
+# ------------------Constants------------------
+ # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
+number_of_frame_pixels_to_ignore = 5
+
+# For the maximum lines' lengths, starting from the gardients' roots, going where each gardient points.
+lines_percentage_of_screen = 0.2 # 0.15 # 0.05 # 0.42
+
+# To ignore "weak" gardients
+ignore_gardients_shorter_than = 0.65 # 0.00001 # 0.6 # 0.5 # 0.7
+
+# After the navigation map is ready (Each pixel's line added it's scores onto it), keep only the strongest pixels (Like max-pooling, keeps only the strongest pixels).
+navigation_percentage_to_keep = 0.15 # 0.5
+
+def post_epoch_plot(model:SpecialFuseNetModel, device:torch.device, dl_test:DataLoader,
+                    figsize=(8, 8), wspace=0.1, hspace=0.2, cmap=None, stop_training_threshold=0.001):
+
+    sample = next(iter(dl_test))
+
+    rgb_minibatch   = sample['rgb']
+    depth_minibatch = sample['depth']
+
+    # Ground-Truth Depth Gradients
+    x_gt_minibatch = sample['x']
+    y_gt_minibatch = sample['y']
+
+    rgb_minibatch   = rgb_minibatch.to(device)
+    depth_minibatch = depth_minibatch.to(device)
+    x_gt_minibatch  = x_gt_minibatch.to(device)
+    y_gt_minibatch  = y_gt_minibatch.to(device)
+    xy_gt_minibatch = torch.cat((x_gt_minibatch, y_gt_minibatch), dim=1)
+
+    model.set_requires_grad(requires_grad=False)
+    with torch.no_grad():
+        xy_minibatch = model(rgb_batch=rgb_minibatch, depth_batch=depth_minibatch)
+        loss         = model.loss(ground_truth_grads=xy_gt_minibatch, approximated_grads=xy_minibatch).item()
+
+    x_minibatch = xy_minibatch[:,0,:,:]
+    y_minibatch = xy_minibatch[:,1,:,:]
+    if len(x_minibatch.shape) == 3:
+        x_minibatch = x_minibatch[:,None,:,:]
+    if len(y_minibatch.shape) == 3:
+        y_minibatch = y_minibatch[:,None,:,:]
+
+    nrows = rgb_minibatch.shape[0]
+    ncols = 4
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
+                             gridspec_kw=dict(wspace=wspace, hspace=hspace, left=0, right=1),
+                             subplot_kw={'aspect': 1})
+    # fig.suptitle('MiniBatch Loss: {:4f}'.format(loss), fontsize=12)
+
+    # print(f'|rgb_minibatch|={rgb_minibatch.shape}')
+    # print(f'|depth_minibatch|={depth_minibatch.shape}')
+    # print(f'|x_gt_minibatch|={x_gt_minibatch.shape}')
+    # print(f'|y_gt_minibatch|={y_gt_minibatch.shape}')
+    # print(f'|x_minibatch|={x_minibatch.shape}')
+    # print(f'|y_minibatch|={y_minibatch.shape}')
+
+    if nrows > 1:
+        for i in range(nrows):
+            rgb   = rgb_minibatch[i,:,:,:]
+            depth = depth_minibatch[i,:,:,:]
+            x_gt  = x_gt_minibatch[i,:,:,:].squeeze(0)
+            y_gt  = y_gt_minibatch[i,:,:,:].squeeze(0)
+            x     = x_minibatch[i,:,:,:].squeeze(0)
+            y     = y_minibatch[i,:,:,:].squeeze(0)
+
+            # print(f'|rgb|={rgb.shape}')
+            # print(f'|depth|={depth.shape}')
+            # print(f'|x_gt|={x_gt.shape}')
+            # print(f'|y_gt|={y_gt.shape}')
+            # print(f'|x|={x.shape}')
+            # print(f'|y|={y.shape}')
+
+            rgb   = torch2np_u8(rgb)
+            depth = torch2np_u8(depth)
+
+            axes[i,0].imshow(rgb, cmap=cmap)
+            axes[i,0].set_title('Ground Truth RGB')
+
+            axes[i,1].imshow(depth, cmap=cmap)
+            axes[i,1].set_title('Ground Truth Depth')
+
+            X_gt,Y_gt = np.meshgrid(np.arange(x_gt.shape[1]), np.arange(x_gt.shape[0]))
+            axes[i,2].quiver(X_gt, Y_gt, x_gt, y_gt, pivot='tip', units='xy')
+            axes[i,2].set_title('Ground Truth Gradients')
+
+            X,Y = np.meshgrid(np.arange(x.shape[1]), np.arange(x.shape[0]))
+            axes[i,3].quiver(X, Y, x, y, pivot='tip', units='xy')
+            axes[i,3].set_title('Model Output Gradients')
+    else:
+        rgb   = rgb_minibatch[0,:,:,:]
+        depth = depth_minibatch[0,:,:,:]
+        x_gt  = x_gt_minibatch[0,:,:,:].squeeze(0)
+        y_gt  = y_gt_minibatch[0,:,:,:].squeeze(0)
+        x     = x_minibatch[0,:,:,:].squeeze(0)
+        y     = y_minibatch[0,:,:,:].squeeze(0)
+
+        rgb   = torch2np_u8(rgb)
+        depth = torch2np_u8(depth)
+
+        axes[0].imshow(rgb, cmap=cmap)
+        axes[0].set_title('Ground Truth RGB')
+
+        axes[1].imshow(depth, cmap=cmap)
+        axes[1].set_title('Ground Truth Depth')
+
+        X_gt, Y_gt = np.meshgrid(np.arange(x_gt.shape[1]), np.arange(x_gt.shape[0]))
+        axes[2].quiver(X_gt, Y_gt, x_gt, y_gt, pivot='tip', units='xy')
+        axes[2].set_title('Ground Truth Gradients')
+
+        X, Y = np.meshgrid(np.arange(x.shape[1]), np.arange(x.shape[0]))
+        axes[3].quiver(X, Y, x, y, pivot='tip', units='xy')
+        axes[3].set_title('Model Output Gradients')
+    plt.show()
+
+    # if loss <= stop_training_threshold:
+    #     return True
+    # else:
+    #     return False
+
+
+
+
+
+
+# When a line runs from it's pixel, directed by it's gardient, how to score each of the line's pixel ?
+# gardient_length: The line's starting score, which fades out as opposite gardients are meeting it along the line.
+# ((1 - (current_line_length / max_line_length)) ** (1 / 2)): Fade out as the line is more far away from it's starting pixel.
+def navigation_score_formula(navigation_image, point, gardient_length, current_line_length, max_line_length):
+    return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+# Other options:
+#     return 1
+#     return navigation_image[point[1]][point[0]] + (gardient_length) * ((1 - (current_line_length / max_line_length)) ** (1 / 10))
+#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - (current_line_length / max_line_length))**(1 / 10)
+#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - current_line_length / max_line_length)
+#     return navigation_image[point[1]][point[0]] + gardient_length
+#     return navigation_image[point[1]][point[0]] + 1
+#     return navigation_image[point[1]][point[0]] + (1 - current_line_length / max_line_length)
+#     return navigation_image[point[1]][point[0]] + current_line_length / max_line_length
+#     return navigation_image[point[1]][point[0]] + gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2))
+#     return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+#     return max(navigation_image[point[1]][point[0]], gardient_length)
+# ------------------End Constants------------------
+
+
+# Fettuccini with Corona sauce below :)
+
 
 def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
     """
