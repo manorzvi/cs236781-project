@@ -45,7 +45,7 @@ def grid_search(combinations:list):
             os.remove(f'{checkpoint_hp_file}.py')
             print('done.')
 
-        os.makedirs(os.path.dirname(checkpoint_hp_file)+'.py', exist_ok=True)
+        os.makedirs(os.path.dirname(f'{checkpoint_hp_file}.py'), exist_ok=True)
         with open(checkpoint_hp_file+'.py', "w") as hpf:
             print(f"IMAGE_SIZE={image_size}",               file=hpf)
             print(f"TRAIN_TEST_RATIO={train_test_ratio}",   file=hpf)
