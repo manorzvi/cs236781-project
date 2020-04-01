@@ -177,9 +177,9 @@ class SpecialFuseNet(nn.Module):
         self.cbrs.append('CBR1_RGB_DEC')
         self.need_initialization.append('CBR1_RGB_DEC')
 
-        print(f'[D] - CBR-s: {self.cbrs}\n'
-              f'    - Dropouts: {self.dropouts}\n'
-              f'    - Need Inits: {self.need_initialization}')
+        # print(f'[D] - CBR-s: {self.cbrs}\n'
+        #       f'    - Dropouts: {self.dropouts}\n'
+        #       f'    - Need Inits: {self.need_initialization}')
 
 
     def forward(self, rgb_inputs, depth_inputs):
