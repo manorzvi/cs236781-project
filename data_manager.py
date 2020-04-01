@@ -117,15 +117,18 @@ class RotateAndFillCornersWithImageFrameColors(object):
         return rgb, depth
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, image_size, use_transforms=False, overfit_mode=False):
+    def __init__(self, root, image_size, constant_index=None, use_transforms=False, overfit_mode=False):
         print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
               f'                             - image_size={image_size}\n'
               f'                             - use_transforms={use_transforms}\n'
-              f'                             - overfit_mode={overfit_mode}\n')
+              f'                             - overfit_mode={overfit_mode}\n'
+              f'                             - constant_index={constant_index}\n')
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
         self.image_size       = image_size
+        if constant_index:
+            self.constant_index = constant_index
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -137,6 +140,7 @@ class rgbd_gradients_dataset(Dataset):
                             f"(|rgbs|={len(self.rgbs)} != |depths|={len(self.depths)})")
 
         self.len = len(self.rgbs)
+        print(f'[I] - |self|={len(self)}')
 
     def transform(self, rgb, depth):
         # TODO: I really don't understand why to apply every transform you found online,
@@ -182,6 +186,9 @@ class rgbd_gradients_dataset(Dataset):
         return rgb, depth
     
     def __getitem__(self, index):
+        if hasattr(self,'constant_index'):
+            index = self.constant_index
+            print(f'[I] - index={index}')
 
         rgb_path   = os.path.join(self.root, "rgb",   self.rgbs[index])
         d_path     = os.path.join(self.root, "depth", self.depths[index])
@@ -203,7 +210,7 @@ class rgbd_gradients_dataset(Dataset):
         return self.len
 
 
-def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size,
+def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size, constant_index,
                               use_transforms=False, overfit_mode=False, seed=42):
     print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
           f'                                - batch_size={batch_size}\n'
@@ -212,11 +219,12 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
           f'                                - image_size={image_size}\n'
           f'                                - use_transforms={use_transforms}\n'
           f'                                - overfit_mode={overfit_mode}\n'
-          f'                                - seed={seed}\n')
-
+          f'                                - seed={seed}\n'
+          f'                                - constant_index={constant_index}\n')
     torch.manual_seed(seed)
 
-    rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode)
+    rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode,
+                                           constant_index=constant_index)
 
     if not overfit_mode:
         split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
