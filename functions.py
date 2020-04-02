@@ -42,7 +42,7 @@ def denorm(x):
 def torch2np_u8(x):
     if len(x.shape) == 4: # Squeeze the batch dimension if exist
         assert x.shape[0] == 1, "Non-empy batch dimension (don't know which sample to pick)"
-        x = x.squeeze()
+        x = x.squeeze(0)
     if x.shape[0] == 1: # Squeeze single color channel
         x = x.squeeze()
     else:
