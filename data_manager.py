@@ -43,6 +43,7 @@ def calc_grads(img: torch.Tensor, ksizes:list=[3,5], kweights=[0.7,0.5], grads_d
 
     return grad_x,grad_y
 
+
 class RandomCropAndResize(object):
     """Crop randomly the image in a sample, while keeping the aspect ratio, then resize
     back to the image's original size.
@@ -50,29 +51,30 @@ class RandomCropAndResize(object):
     Args:
         output_size (tuple or int): Desired output size. If int, square crop
             is made.
-        minimum_image_precentage_to_look_at(int): Minimum percentage of image to keep after cropping.
+        minimum_image_percentage_to_look_at(float): Minimum percentage of image to keep after cropping.
     """
 
-    def __init__(self, output_size, minimum_image_precentage_to_look_at=0.7):
+    def __init__(self, output_size, minimum_image_percentage_to_look_at=0.7):
         assert isinstance(output_size, (int, tuple))
-        assert isinstance(minimum_image_precentage_to_look_at, float)
+        assert isinstance(minimum_image_percentage_to_look_at, float)
         if isinstance(output_size, int):
             self.output_size = (output_size, output_size)
         else:
             assert len(output_size) == 2
             self.output_size = output_size
-        self.minimum_image_precentage_to_look_at = minimum_image_precentage_to_look_at
+        self.minimum_image_percentage_to_look_at = minimum_image_percentage_to_look_at
 
     def __call__(self, rgb, depth):
-        image_precentage_to_look_at = random.uniform(self.minimum_image_precentage_to_look_at, 1.0)
-        crop_width = int(image_precentage_to_look_at * self.output_size[1])
+        image_precentage_to_look_at = random.uniform(self.minimum_image_percentage_to_look_at, 1.0)
+        crop_width  = int(image_precentage_to_look_at * self.output_size[1])
         crop_height = int(image_precentage_to_look_at * self.output_size[0])
-        crop_top = random.randint(0, self.output_size[0] - crop_height)
-        crop_left = random.randint(0, self.output_size[1] - crop_width)
-        rgb = T.functional.resized_crop(rgb, crop_top, crop_left, crop_height, crop_width, self.output_size)
-        depth = T.functional.resized_crop(depth, crop_top, crop_left, crop_height, crop_width, self.output_size)
+        crop_top    = random.randint(0, self.output_size[0] - crop_height)
+        crop_left   = random.randint(0, self.output_size[1] - crop_width)
+        rgb         = T.functional.resized_crop(rgb,   crop_top, crop_left, crop_height, crop_width, self.output_size)
+        depth       = T.functional.resized_crop(depth, crop_top, crop_left, crop_height, crop_width, self.output_size)
         return rgb, depth
-    
+
+
 class RotateAndFillCornersWithImageFrameColors(object):
     """Rotates both image by the same angle, and fills the created corners by the colors of the images' frames
     pixels.
@@ -98,31 +100,35 @@ class RotateAndFillCornersWithImageFrameColors(object):
 
     def __call__(self, rgb, depth):
         padding = max(self.output_size[0], self.output_size[1])
-        rgb = T.functional.resized_crop(rgb, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
-        depth = T.functional.resized_crop(depth, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
-        rgb = T.Pad(padding=padding, fill=0, padding_mode='edge')(rgb)
-        depth = T.Pad(padding=padding, fill=0, padding_mode='edge')(depth)
+        rgb     = T.functional.resized_crop(rgb, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
+        depth   = T.functional.resized_crop(depth, self.frame_removal_length, self.frame_removal_length, self.output_size[0] - 2 * self.frame_removal_length, self.output_size[1] - 2 * self.frame_removal_length, self.output_size)
+        rgb     = T.Pad(padding=padding, fill=0, padding_mode='edge')(rgb)
+        depth   = T.Pad(padding=padding, fill=0, padding_mode='edge')(depth)
         degree_to_rotate = random.uniform(-self.degrees_range, self.degrees_range)
         # some bug in torchvision, got the solution at:
         # https://github.com/pytorch/vision/issues/1759
         # https://www.gitmemory.com/issue/pytorch/vision/1759/575357711
         #filler = 0.0 if rgb.mode.startswith("F") else 0
         num_bands = len(rgb.getbands())
-        rgb = T.functional.rotate(img=rgb, angle=degree_to_rotate, fill=(0,) * num_bands)
-        #filler = 0.0 if depth.mode.startswith("F") else 0
+        rgb       = T.functional.rotate(img=rgb, angle=degree_to_rotate, fill=(0,) * num_bands)
+        # filler    = 0.0 if depth.mode.startswith("F") else 0
         num_bands = len(depth.getbands())
-        depth = T.functional.rotate(img=depth, angle=degree_to_rotate, fill=(0,) * num_bands)
-        rgb = T.functional.resized_crop(rgb, padding, padding, self.output_size[0], self.output_size[1], self.output_size)
-        depth = T.functional.resized_crop(depth, padding, padding, self.output_size[0], self.output_size[1], self.output_size)
+        depth     = T.functional.rotate(img=depth, angle=degree_to_rotate, fill=(0,) * num_bands)
+        rgb       = T.functional.resized_crop(rgb,   padding, padding, self.output_size[0], self.output_size[1], self.output_size)
+        depth     = T.functional.resized_crop(depth, padding, padding, self.output_size[0], self.output_size[1], self.output_size)
         return rgb, depth
 
+
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, image_size, constant_index=None, use_transforms=False, overfit_mode=False):
+    def __init__(self, root, image_size, constant_index=None,
+                 use_transforms=False, overfit_mode=False):
         print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
               f'                             - image_size={image_size}\n'
               f'                             - use_transforms={use_transforms}\n'
               f'                             - overfit_mode={overfit_mode}\n'
               f'                             - constant_index={constant_index}\n')
+
+
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
@@ -143,9 +149,7 @@ class rgbd_gradients_dataset(Dataset):
         print(f'[I] - |self|={len(self)}')
 
     def transform(self, rgb, depth):
-        # TODO: I really don't understand why to apply every transform you found online,
-        #  while we still can't run a single proper training iteration.
-        
+
         # Resize to constant spatial dimensions
         rgb   = T.Resize(self.image_size)(rgb)
         depth = T.Resize(self.image_size)(depth)
@@ -156,25 +160,22 @@ class rgbd_gradients_dataset(Dataset):
                 rgb   = T.RandomHorizontalFlip(p=1.0)(rgb)
                 depth = T.RandomHorizontalFlip(p=1.0)(depth)
 
-        # TODO: Uncomment the following later, after we see some progress.
+            # Randomly changes the brightness, contrast and saturation of an image.
+            # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
+            rgb = T.ColorJitter(
+                brightness=abs(0.1 * torch.randn(1).item()),
+                contrast=abs(0.1 * torch.randn(1).item()),
+                saturation=abs(0.1 * torch.randn(1).item()),
+                hue=abs(0.1 * torch.randn(1).item())
+            )(rgb)
         
-#         # Randomly changes the brightness, contrast and saturation of an image.
-#         # Example: https://discuss.pytorch.org/t/data-augmentation-in-pytorch/7925/15
-#         rgb = T.ColorJitter(
-#             brightness=abs(0.1 * torch.randn(1).item()),
-#             contrast=abs(0.1 * torch.randn(1).item()),
-#             saturation=abs(0.1 * torch.randn(1).item()),
-#             hue=abs(0.1 * torch.randn(1).item())
-#         )(rgb)
-        
-#         # Crops and resizes back to IMAGE_SIZE
-#         rgb, depth = RandomCropAndResize(output_size=IMAGE_SIZE, minimum_image_precentage_to_look_at=0.7)(rgb, depth)
-        
-#         # Rotation
-#         rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=IMAGE_SIZE, degrees_range=20, frame_removal_length=3)(rgb, depth)
-    
-        # USE THIS ??? torchvision.transforms.functional.perspective(img, startpoints, endpoints, interpolation=3)
-        
+            # Crops and resizes back to IMAGE_SIZE
+            rgb, depth = RandomCropAndResize(output_size=self.image_size,
+                                             minimum_image_percentage_to_look_at=0.7)(rgb, depth)
+            # Rotation
+            rgb, depth = RotateAndFillCornersWithImageFrameColors(output_size=self.image_size,
+                                                                  degrees_range=20, frame_removal_length=3)(rgb, depth)
+
         # PIL.Image -> torch.Tensor
         rgb   = T.ToTensor()(rgb)
         depth = T.ToTensor()(depth)
@@ -250,3 +251,90 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
                                                  shuffle=True)
         print(f'[I (rgbd_gradients_dataloader)] - |Dataset|={len(rgbd_grads_ds)}')
         return (dl_overfit, deepcopy(dl_overfit)) # dl_train & dl_test equals and consist of a single image.
+
+
+class rgbd_gradients_validation_dataset(Dataset):
+    def __init__(self, root, image_size, validation='both', mean=None, std=None):
+        print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
+              f'                             - image_size={image_size}\n'
+              f'                             - validation={validation}\n'
+              f'                             - mean={mean}\n'
+              f'                             - std={std}\n')
+        assert validation in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
+            f"validation mode ({validation}) not in " \
+            f"['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb']"
+        if validation in ['noise_depth', 'noise_rgb']:
+            assert mean is not None and std is not None, "Provide Mean & Std"
+
+        self.root       = root
+        self.image_size = image_size
+        self.validation = validation
+        self.mean = mean
+        self.std = std
+
+        # load all image files, sorting them to
+        # ensure that they are aligned
+        self.rgbs = list(sorted(os.listdir(os.path.join(root, 'rgb'))))
+        self.depths = list(sorted(os.listdir(os.path.join(root, 'depth'))))
+
+        if not (len(self.rgbs) == len(self.depths)):
+            raise Exception(f"Non-equal number of samples from each kind "
+                            f"(|rgbs|={len(self.rgbs)} != |depths|={len(self.depths)})")
+
+        self.len = len(self.rgbs)
+        print(f'[I] - |self|={len(self)}')
+
+    def __getitem__(self, index):
+
+        rgb_path = os.path.join(self.root, "rgb", self.rgbs[index])
+        d_path = os.path.join(self.root, "depth", self.depths[index])
+
+        if self.validation == 'both':
+            rgb = Image.open(rgb_path)
+            d   = Image.open(d_path)
+            # Resize to constant spatial dimensions
+            rgb = T.Resize(self.image_size)(rgb)
+            d = T.Resize(self.image_size)(d)
+            # PIL.Image -> torch.Tensor
+            rgb = T.ToTensor()(rgb)
+            d = T.ToTensor()(d)
+            # Dynamic range [0,1] -> [-1, 1]
+            rgb = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
+            d = T.Normalize(mean=(.5,), std=(.5,))(d)
+            x, y = calc_grads(d)
+        elif self.validation == 'zero_rgb' or self.validation == 'noise_rgb':
+            d = Image.open(d_path)
+            d = T.Resize(self.image_size)(d)
+            d = T.ToTensor()(d)
+            d = T.Normalize(mean=(.5,), std=(.5,))(d)
+            if self.validation == 'zero_rgb':
+                rgb = torch.zeros((3,d.shape[1],d.shape[2]),dtype=torch.float32)
+            else:
+                rgb = np.random.normal(loc=self.mean, scale=self.std,
+                                       size=((3,d.shape[1],d.shape[2]))).astype(np.float32)
+                rgb = torch.from_numpy(rgb)
+            x, y = calc_grads(d)
+        elif self.validation == 'zero_depth' or self.validation == 'noise_depth':
+            rgb = Image.open(rgb_path)
+            rgb = T.Resize(self.image_size)(rgb)
+            rgb = T.ToTensor()(rgb)
+            rgb = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
+            if self.validation == 'zero_depth':
+                d = torch.zeros((1,rgb.shape[1],rgb.shape[2]),dtype=torch.float32)
+            else:
+                d = np.random.normal(loc=self.mean, scale=self.std,
+                                       size=((1, rgb.shape[1], rgb.shape[2]))).astype(np.float32)
+                d = torch.from_numpy(d)
+            x = torch.zeros_like(d)
+            y = torch.zeros_like(d)
+        # print(rgb.shape, rgb.dtype)
+        # print(d.shape, d.dtype)
+        # print(x.shape, y.shape, x.dtype)
+
+        return {'rgb': rgb,
+                'depth': d,
+                'x': x,
+                'y': y}
+
+    def __len__(self):
+        return self.len
