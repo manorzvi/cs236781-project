@@ -9,14 +9,14 @@ from lines_utils import line_intersection, get_line, get_2d_rotation_matrix
 
 class Gradients_to_navigation(object):
     def __init__(self, number_of_frame_pixels_to_ignore=5, lines_percentage_of_screen=0.2, ignore_gardients_shorter_than=0.65, navigation_percentage_to_keep=0.15):
-         # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
+        # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
         # number_of_frame_pixels_to_ignore
         # For the maximum lines' lengths, starting from the gardients' roots, going where each gardient points.
-         # lines_percentage_of_screen 0.15 # 0.05 # 0.42
+        # lines_percentage_of_screen 0.15 # 0.05 # 0.42
         # To ignore "weak" gardients
-         # ignore_gardients_shorter_than 0.00001 # 0.6 # 0.5 # 0.7
+        # ignore_gardients_shorter_than 0.00001 # 0.6 # 0.5 # 0.7
         # After the navigation map is ready (Each pixel's line added it's scores onto it), keep only the strongest pixels (Like max-pooling, keeps only the strongest pixels).
-         # navigation_percentage_to_keep 0.5
+        # navigation_percentage_to_keep 0.5
         # When a line runs from it's pixel, directed by it's gardient, how to score each of the line's pixel ?
         # gardient_length: The line's starting score, which fades out as opposite gardients are meeting it along the line.
         # ((1 - (current_line_length / max_line_length)) ** (1 / 2)): Fade out as the line is more far away from it's starting pixel.
@@ -158,7 +158,7 @@ class Gradients_to_navigation(object):
         navigation_image = navigation_image.T
         return navigation_image
 
-    def calculate_goto_pixel_image(self, rgb, navigation_image):
+    def calculate_goto_pixel(self, navigation_image):
         x_sum = 0
         y_sum = 0
         sum_values = 0
@@ -170,6 +170,21 @@ class Gradients_to_navigation(object):
                 y_sum += j * current_value
         navigate_to_x = int(x_sum / sum_values)
         navigate_to_y = int(y_sum / sum_values)
+        return navigate_to_x, navigate_to_y
+    
+    def calculate_goto_pixel_image(self, rgb, navigation_image):
+#         x_sum = 0
+#         y_sum = 0
+#         sum_values = 0
+#         for j in range(navigation_image.shape[0]):
+#             for k in range(navigation_image.shape[1]):
+#                 current_value = navigation_image[j][k]
+#                 sum_values += current_value
+#                 x_sum += k * current_value
+#                 y_sum += j * current_value
+#         navigate_to_x = int(x_sum / sum_values)
+#         navigate_to_y = int(y_sum / sum_values)
+        navigate_to_x, navigate_to_y = self.calculate_goto_pixel(navigation_image=navigation_image)
         # Plots the Goto marker on the RGB image.
         goto_image = copy.deepcopy(rgb)
         color = torch.from_numpy(np.array([255, 0 ,0]))
