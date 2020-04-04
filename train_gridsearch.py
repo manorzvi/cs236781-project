@@ -77,11 +77,11 @@ def grid_search(combinations:list):
         if OVERFITTING_TRAINING:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
                                                sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
-                                               device=device, overfit_mode=OVERFITTING_TRAINING, dropout_p=0)
+                                               device=device, dropout_p=0)
         else:
             fusenetmodel = SpecialFuseNetModel(rgb_size=rgb_size, depth_size=depth_size, grads_size=grads_size,
                                                sgd_lr=lr, sgd_momentum=momentum, sgd_wd=weight_decay,
-                                               device=device, overfit_mode=OVERFITTING_TRAINING)
+                                               device=device)
 
         trainer = FuseNetTrainer(model=fusenetmodel, device=device, num_epochs=num_epochs)
 
