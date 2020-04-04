@@ -212,23 +212,18 @@ class rgbd_gradients_dataset(Dataset):
 
 
 class rgbd_gradients_inference_dataset(Dataset):
-    def __init__(self, root, image_size, inference='both', mean=None, std=None):
+    def __init__(self, root, image_size, inference='both'):
         print(f'[I (rgbd_gradients_inference_dataset)] - root={root}\n'
               f'                                       - image_size={image_size}\n'
-              f'                                       - inference={inference}\n'
-              f'                                       - mean={mean}\n'
-              f'                                       - std={std}\n')
+              f'                                       - inference={inference}\n')
         assert inference in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
             f"inference ({inference}) not in " \
             f"['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb']"
-        if inference in ['noise_depth', 'noise_rgb']:
-            assert mean is not None and std is not None, "Provide Mean & Std"
 
         self.root       = root
         self.image_size = image_size
         self.inference = inference
-        self.mean = mean
-        self.std = std
+
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -268,26 +263,26 @@ class rgbd_gradients_inference_dataset(Dataset):
             if self.inference == 'zero_rgb':
                 rgb = torch.zeros((3,d.shape[1],d.shape[2]),dtype=torch.float32)
             else:
-                rgb = np.random.normal(loc=self.mean, scale=self.std,
-                                       size=((3,d.shape[1],d.shape[2]))).astype(np.float32)
-                rgb = torch.from_numpy(rgb)
+
+                rgb = torch.rand((3,d.shape[1],d.shape[2]))
+                rgb = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
             x, y = calc_grads(d)
         elif self.inference == 'zero_depth' or self.inference == 'noise_depth':
             rgb = Image.open(rgb_path)
             rgb = T.Resize(self.image_size)(rgb)
             rgb = T.ToTensor()(rgb)
             rgb = T.Normalize(mean=(.5, .5, .5), std=(.5, .5, .5))(rgb)
+            # Load Depth Image for Ground Truth grads calculations only
+            d = Image.open(d_path)
+            d = T.Resize(self.image_size)(d)
+            d = T.ToTensor()(d)
+            d = T.Normalize(mean=(.5,), std=(.5,))(d)
+            x, y = calc_grads(d)
             if self.inference == 'zero_depth':
                 d = torch.zeros((1,rgb.shape[1],rgb.shape[2]),dtype=torch.float32)
             else:
-                d = np.random.normal(loc=self.mean, scale=self.std,
-                                       size=((1, rgb.shape[1], rgb.shape[2]))).astype(np.float32)
-                d = torch.from_numpy(d)
-            x = torch.zeros_like(d)
-            y = torch.zeros_like(d)
-        # print(rgb.shape, rgb.dtype)
-        # print(d.shape, d.dtype)
-        # print(x.shape, y.shape, x.dtype)
+                d = torch.rand((1, rgb.shape[1], rgb.shape[2]))
+                d = T.Normalize(mean=(.5,), std=(.5,))(d)
 
         return {'rgb': rgb,
                 'depth': d,
@@ -299,7 +294,7 @@ class rgbd_gradients_inference_dataset(Dataset):
 
 
 def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size, constant_index,
-                              use_transforms=False, overfit_mode=False, seed=42, inference=None, mean=None, std=None):
+                              use_transforms=False, overfit_mode=False, seed=42, inference=None):
     print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
           f'                                - batch_size={batch_size}\n'
           f'                                - num_workers={num_workers}\n'
@@ -309,22 +304,18 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
           f'                                - overfit_mode={overfit_mode}\n'
           f'                                - seed={seed}\n'
           f'                                - constant_index={constant_index}\n'
-          f'                                - inference={inference}\n'
-          f'                                - mean={mean}\n'
-          f'                                - std={std}\n')
+          f'                                - inference={inference}\n')
     if inference is not None:
         assert inference in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
             f"inference ({inference}) not in " \
             f"['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb']"
-        if inference in ['noise_depth', 'noise_rgb']:
-            assert mean is not None and std is not None, "Provide Mean & Std"
     torch.manual_seed(seed)
 
     if not inference:
         rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode,
                                                constant_index=constant_index)
     elif inference is not None:
-        rgbd_grads_ds = rgbd_gradients_inference_dataset(root, image_size, inference=inference, mean=mean, std=std)
+        rgbd_grads_ds = rgbd_gradients_inference_dataset(root, image_size, inference=inference)
 
     if not overfit_mode:
         split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
