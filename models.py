@@ -37,13 +37,12 @@ def make_decoder_cbr(sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
 
 
 class SpecialFuseNet(nn.Module):
-    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=0.4, overfit_mode=False):
+    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=0.4,):
         super().__init__()
         print(f'[I] - Init SpecialFuseNet\n'
               f'    - warm start={warm_start}\n'
               f'    - BN momentum={bn_momentum}\n'
-              f'    - dropout_p={dropout_p}'
-              f'    - overfit_mode={overfit_mode}')
+              f'    - dropout_p={dropout_p}\n')
         # Extract Conv2d layers only from VGG16 model (Encoder Warm Start, according to the paper)
         layers_names = ["conv1_1", "conv1_2", "conv2_1", "conv2_2", "conv3_1", "conv3_2", "conv3_3", "conv4_1",
                         "conv4_2", "conv4_3", "conv5_1", "conv5_2", "conv5_3"]
@@ -282,16 +281,18 @@ class SpecialFuseNet(nn.Module):
 class SpecialFuseNetModel():
     def __init__(self, sgd_lr=0.001, sgd_momentum=0.9, sgd_wd=0.0005,
                  device=None, rgb_size=None,depth_size=None,grads_size=None,
-                 seed=42, dropout_p=0.4, optimizer=None, scheduler=None, overfit_mode=False):
-        assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
-        assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
-        assert isinstance(device, torch.device), "Please provide device as torch.device"
+                 seed=42, dropout_p=0.4, optimizer=None, scheduler=None,):
         print(f'[I] - device={device}\n'
               f'    - seed={seed}\n'
               f'    - dropout_p={dropout_p}\n'
               f'    - optimizer={optimizer}\n'
-              f'    - scheduler={scheduler}'
-              f'    - overfit_mode={overfit_mode}')
+              f'    - scheduler={scheduler}\n')
+        assert (rgb_size and depth_size and grads_size) or \
+               (rgb_size is None and depth_size is None and grads_size is None), "Provide inputs sizes, or None"
+        if not (rgb_size is None and depth_size is None and grads_size is None):
+            assert (len(rgb_size) == len(depth_size) == len(grads_size) == 3), "Emit the batch dimension or None"
+        assert isinstance(device, torch.device), "Please provide device as torch.device"
+
         torch.manual_seed(seed)
 
         self.rgb_size   = rgb_size
@@ -300,12 +301,19 @@ class SpecialFuseNetModel():
         self.device     = device
         self.dropout_p  = dropout_p
 
-        self.net = SpecialFuseNet(dropout_p=dropout_p, overfit_mode=overfit_mode)
+        self.net = SpecialFuseNet(dropout_p=dropout_p)
         self.net.to(self.device)
 
-        self._check_features()
+        if rgb_size is not None and depth_size is not None and grads_size is not None:
+            print(f'[I] - Check Features ...', end='')
+            self._check_features()
+            print(' Done.')
+        else:
+            print(f'[I] - Check Features Disabled')
         self.initialize()
         self.net = DataParallel(self.net).to(self.device)
+        self.load_state_dict = self.net.load_state_dict
+        self.train = self.net.train
 
         self.loss_func = nn.MSELoss()
 
