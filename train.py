@@ -113,6 +113,9 @@ class FuseNetTrainer():
 
         return FitResult(actual_num_epochs, train_loss, test_loss)
 
+    def eval(self, dl_test):
+        return self.test_epoch(dl_test)
+
     def train_epoch(self, dl_train: DataLoader, **kw) -> EpochResult:
         """
         Train once over a training set (single epoch).
