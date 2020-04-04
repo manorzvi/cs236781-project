@@ -7,75 +7,40 @@ import copy
 from functions import torch2np_u8
 from lines_utils import line_intersection, get_line, get_2d_rotation_matrix
 
-# ------------------Constants------------------
- # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
-number_of_frame_pixels_to_ignore = 5
-
-# For the maximum lines' lengths, starting from the gardients' roots, going where each gardient points.
-lines_percentage_of_screen = 0.2 # 0.15 # 0.05 # 0.42
-
-# To ignore "weak" gardients
-ignore_gardients_shorter_than = 0.65 # 0.00001 # 0.6 # 0.5 # 0.7
-
-# After the navigation map is ready (Each pixel's line added it's scores onto it), keep only the strongest pixels (Like max-pooling, keeps only the strongest pixels).
-navigation_percentage_to_keep = 0.15 # 0.5
-
-# When a line runs from it's pixel, directed by it's gardient, how to score each of the line's pixel ?
-# gardient_length: The line's starting score, which fades out as opposite gardients are meeting it along the line.
-# ((1 - (current_line_length / max_line_length)) ** (1 / 2)): Fade out as the line is more far away from it's starting pixel.
-def navigation_score_formula(navigation_image, point, gardient_length, current_line_length, max_line_length):
-    return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
-# Other options:
-#     return 1
-#     return navigation_image[point[1]][point[0]] + (gardient_length) * ((1 - (current_line_length / max_line_length)) ** (1 / 10))
-#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - (current_line_length / max_line_length))**(1 / 10)
-#     return navigation_image[point[1]][point[0]] + gardient_length * (1 - current_line_length / max_line_length)
-#     return navigation_image[point[1]][point[0]] + gardient_length
-#     return navigation_image[point[1]][point[0]] + 1
-#     return navigation_image[point[1]][point[0]] + (1 - current_line_length / max_line_length)
-#     return navigation_image[point[1]][point[0]] + current_line_length / max_line_length
-#     return navigation_image[point[1]][point[0]] + gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2))
-#     return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
-#     return max(navigation_image[point[1]][point[0]], gardient_length)
-# ------------------End Constants------------------
-
-
-# Fettuccini with Corona sauce below :)
-
-
-def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
-    if random_start:
-        start = np.random.randint(0, len(dataset) - n)
-        stop  = start + n
-    else:
-        start = 0
-        stop  = n
-    # [(img0, cls0), ..., # (imgN, clsN)]
-    first_n = list(itertools.islice(dataset, start, stop))
-    # return rgbd_gradients_dataset_plot(first_n, **kw)
-    return rgbd_gradients_dataset_plot(first_n, wspace=0.0, hspace=0.0, **kw)
-
-def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hspace=0.2, cmap=None):
-    fig, axes = plt.subplots(nrows=len(samples), ncols=4, figsize=figsize,
-                             gridspec_kw=dict(wspace=wspace, hspace=hspace, left=0, right=1),
-                             subplot_kw={'aspect': 1})
-    # Plot each tensor
-    for i in range(len(samples)):
-        rgb   = samples[i]['rgb']
-        depth = samples[i]['depth']
-        x     = samples[i]['x'].squeeze(0)
-        y     = samples[i]['y'].squeeze(0)
+class Gradients_to_navigation(object):
+    def __init__(self, number_of_frame_pixels_to_ignore=5, lines_percentage_of_screen=0.2, ignore_gardients_shorter_than=0.65, navigation_percentage_to_keep=0.15):
+        # Because if an image's frame is black, it may cause false lines, starting from the frame and though nearby whiter pixels.
+        # number_of_frame_pixels_to_ignore
+        # For the maximum lines' lengths, starting from the gradients' roots, going where each gradient points.
+        # lines_percentage_of_screen 0.15 # 0.05 # 0.42
+        # To ignore "weak" gradients
+        # ignore_gradients_shorter_than 0.00001 # 0.6 # 0.5 # 0.7
+        # After the navigation map is ready (Each pixel's line added it's scores onto it), keep only the strongest pixels (Like max-pooling, keeps only the strongest pixels).
+        # navigation_percentage_to_keep 0.5
+        # When a line runs from it's pixel, directed by it's gradient, how to score each of the line's pixel ?
+        # gardient_length: The line's starting score, which fades out as opposite gardients are meeting it along the line.
+        # ((1 - (current_line_length / max_line_length)) ** (1 / 2)): Fade out as the line is more far away from it's starting pixel.
+        self.number_of_frame_pixels_to_ignore = number_of_frame_pixels_to_ignore
+        self.lines_percentage_of_screen = lines_percentage_of_screen
+        self.ignore_gardients_shorter_than = ignore_gardients_shorter_than
+        self.navigation_percentage_to_keep = navigation_percentage_to_keep
         
-        rgb   = torch2np_u8(rgb)
-        depth = torch2np_u8(depth)
+    def navigation_score_formula(self, navigation_image, point, gardient_length, current_line_length, max_line_length):
+        return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+        # Other options:
+        #     return 1
+        #     return navigation_image[point[1]][point[0]] + (gardient_length) * ((1 - (current_line_length / max_line_length)) ** (1 / 10))
+        #     return navigation_image[point[1]][point[0]] + gardient_length * (1 - (current_line_length / max_line_length))**(1 / 10)
+        #     return navigation_image[point[1]][point[0]] + gardient_length * (1 - current_line_length / max_line_length)
+        #     return navigation_image[point[1]][point[0]] + gardient_length
+        #     return navigation_image[point[1]][point[0]] + 1
+        #     return navigation_image[point[1]][point[0]] + (1 - current_line_length / max_line_length)
+        #     return navigation_image[point[1]][point[0]] + current_line_length / max_line_length
+        #     return navigation_image[point[1]][point[0]] + gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2))
+        #     return max(navigation_image[point[1]][point[0]], gardient_length * ((1 - (current_line_length / max_line_length)) ** (1 / 2)))
+        #     return max(navigation_image[point[1]][point[0]], gardient_length)
 
-        axes[i, 1].imshow(depth, cmap=cmap)
-#         axes[i, 4].imshow(depth, cmap=cmap) # NOTHING HERE, just to keep the plottings close, to prevent the annoying bottom scroller.
-        
-        X,Y = np.meshgrid(np.arange(x.shape[1]), np.arange(x.shape[0]))
-        axes[i, 3].quiver(X, Y, x, y, pivot='tip', units='xy')
-        axes[i, 3].set_ylim(axes[i, 3].get_ylim()[::-1]) # Transpose, to look like the original RGB and Depth images.
-        
+    def calculate_navigation_image(self, x, y):
         # Attempt to use only the longest gradients
         # # percentage_of_lengths_to_use = 0.25
         # gardient_lengths = []
@@ -93,11 +58,11 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
         # Distance from it's origin.
         # Anti-gardient pixels along it's way. (Gardients who point to the opposite direction of the gardient)
         navigation_image = np.zeros(x.shape, dtype=np.float64)
-        for j in range(number_of_frame_pixels_to_ignore, navigation_image.shape[0] - number_of_frame_pixels_to_ignore):
-            for k in range(number_of_frame_pixels_to_ignore, navigation_image.shape[1] - number_of_frame_pixels_to_ignore):
+        for j in range(self.number_of_frame_pixels_to_ignore, navigation_image.shape[0] - self.number_of_frame_pixels_to_ignore):
+            for k in range(self.number_of_frame_pixels_to_ignore, navigation_image.shape[1] - self.number_of_frame_pixels_to_ignore):
                 x_gardient = x[j][k]
                 y_gardient = y[j][k]
-                if np.linalg.norm(np.array([x_gardient, y_gardient])) < ignore_gardients_shorter_than:
+                if np.linalg.norm(np.array([x_gardient, y_gardient])) < self.ignore_gardients_shorter_than:
                     continue
                 # Checks the 4 border lines of the image's frame for the intersection point between "gardient_line" and one of them.
                 gardient_line = ([j, k], [j + y_gardient.item(), k + x_gardient.item()])
@@ -145,10 +110,8 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                             if intersection_point is not None:
                                 (x_intersection, y_intersection) = intersection_point
                             else:
-                                print("x_gardient", "y_gardient")
-                                print(x_gardient, y_gardient)
-                                print("gardient_line")
-                                print(gardient_line)
+                                print("x_gardient", str(x_gardient), ", y_gardient", str(y_gardient))
+                                print("gardient_line", str(gardient_line))
                                 print("WARNING, a line didn't find an intersection line with the image's frame.")
                                 continue
                 # Finds all 2D points along current-pixel to intersection-with-image-frame-pixel line
@@ -162,7 +125,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                 gardient_radians = math.atan2(y_gardient, x_gardient)
                 R_gardient = get_2d_rotation_matrix(radians=-gardient_radians)
                 screen_average_of_width_and_height = (navigation_image.shape[0] + navigation_image.shape[1]) / 2
-                max_line_length = int(lines_percentage_of_screen * screen_average_of_width_and_height)
+                max_line_length = int(self.lines_percentage_of_screen * screen_average_of_width_and_height)
                 current_line_length = 0
                 for point in line_points:
                     if current_line_length == max_line_length:
@@ -174,7 +137,7 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                         # Sets current gardient's line's point's (pixel's) "navigation" value.
                         # Longer gardients, and points closer to the original gardient start point cause the value to be higher.
                         # Very important to find the best formula here.
-                        navigation_image[point[1]][point[0]] = navigation_score_formula(navigation_image, point, gardient_length, current_line_length, max_line_length)
+                        navigation_image[point[1]][point[0]] = self.navigation_score_formula(navigation_image, point, gardient_length, current_line_length, max_line_length)
                         # Decreases the running gardient length, if opposite gardients are on it's way.
                         rotated_point = np.dot(R_gardient, np.array([x_current_point_gardient, y_current_point_gardient]))
                         if rotated_point[0] < 0:
@@ -187,16 +150,15 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
             for k in range(navigation_image.shape[1]):
                 navigation_values.append(navigation_image[j][k])
         navigation_values.sort()
-        navigation_values = navigation_values[-int(navigation_percentage_to_keep * len(navigation_values)):]
+        navigation_values = navigation_values[-int(self.navigation_percentage_to_keep * len(navigation_values)):]
         for j in range(navigation_image.shape[0]):
             for k in range(navigation_image.shape[1]):
                 if navigation_image[j][k] not in navigation_values:
                     navigation_image[j][k] = 0
-
         navigation_image = navigation_image.T
-        axes[i, 2].imshow(navigation_image, cmap=cmap)
+        return navigation_image
 
-        # Finds the pixel to navigate through, using weighted average over all of the navigation map.
+    def calculate_goto_pixel(self, navigation_image):
         x_sum = 0
         y_sum = 0
         sum_values = 0
@@ -208,19 +170,75 @@ def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hsp
                 y_sum += j * current_value
         navigate_to_x = int(x_sum / sum_values)
         navigate_to_y = int(y_sum / sum_values)
+        return navigate_to_x, navigate_to_y
+    
+    def calculate_goto_pixel_image(self, rgb, navigation_image):
+#         x_sum = 0
+#         y_sum = 0
+#         sum_values = 0
+#         for j in range(navigation_image.shape[0]):
+#             for k in range(navigation_image.shape[1]):
+#                 current_value = navigation_image[j][k]
+#                 sum_values += current_value
+#                 x_sum += k * current_value
+#                 y_sum += j * current_value
+#         navigate_to_x = int(x_sum / sum_values)
+#         navigate_to_y = int(y_sum / sum_values)
+        navigate_to_x, navigate_to_y = self.calculate_goto_pixel(navigation_image=navigation_image)
         # Plots the Goto marker on the RGB image.
-        color = np.array([255, 0 ,0])
+        goto_image = copy.deepcopy(rgb)
+        color = torch.from_numpy(np.array([255, 0 ,0]))
         marker_length = int(navigation_image.shape[0] / 10)
         marker_width = int(marker_length / 3)
-        goto_image = copy.deepcopy(rgb)
         for j in range(navigate_to_x - int(marker_width / 2), navigate_to_x + int(marker_width / 2) + 1):
             for k in range(navigate_to_y - int(marker_length / 2), navigate_to_y + int(marker_length / 2) + 1):
                 if 0 <= k < navigation_image.shape[0] and 0 <= j < navigation_image.shape[1]:
-                    goto_image[k][j] = color
-        for j in range(navigate_to_y - int(marker_width / 2), navigate_to_y + int(marker_width / 2) + 1):
-            for k in range(navigate_to_x - int(marker_length / 2), navigate_to_x + int(marker_length / 2) + 1):
-                if 0 <= k < navigation_image.shape[1] and 0 <= j < navigation_image.shape[0]:
-                    goto_image[j][k] = color
+                    goto_image[:, k, j] = color
+        for k in range(navigate_to_y - int(marker_width / 2), navigate_to_y + int(marker_width / 2) + 1):    
+            for j in range(navigate_to_x - int(marker_length / 2), navigate_to_x + int(marker_length / 2) + 1):
+                if 0 <= k < navigation_image.shape[0] and 0 <= j < navigation_image.shape[1]:
+                    goto_image[:, k, j] = color
+        return goto_image
+
+
+def rgbd_gradients_dataset_first_n(dataset, n, random_start=True, **kw):
+    if random_start:
+        start = np.random.randint(0, len(dataset) - n)
+        stop  = start + n
+    else:
+        start = 0
+        stop  = n
+    # [(img0, cls0), ..., # (imgN, clsN)]
+    first_n = list(itertools.islice(dataset, start, stop))
+    # return rgbd_gradients_dataset_plot(first_n, **kw)
+    return rgbd_gradients_dataset_plot(first_n, wspace=0.0, hspace=0.0, **kw)
+
+def rgbd_gradients_dataset_plot(samples: list, figsize=(12, 12), wspace=0.1, hspace=0.2, cmap=None):
+    fig, axes = plt.subplots(nrows=len(samples), ncols=4, figsize=figsize,
+                             gridspec_kw=dict(wspace=wspace, hspace=hspace, left=0, right=1),
+                             subplot_kw={'aspect': 1})
+    # Plot each tensor
+    for i in range(len(samples)):
+        rgb   = samples[i]['rgb']
+        depth = samples[i]['depth']
+        x     = samples[i]['x'].squeeze(0)
+        y     = samples[i]['y'].squeeze(0)
+        
+        rgb   = torch2np_u8(rgb)
+        depth = torch2np_u8(depth)
+
+        axes[i, 1].imshow(depth, cmap=cmap)
+#         axes[i, 4].imshow(depth, cmap=cmap) # NOTHING HERE, just to keep the plottings close, to prevent the annoying bottom scroller.
+        
+        X,Y = np.meshgrid(np.arange(x.shape[1]), np.arange(x.shape[0]))
+        axes[i, 3].quiver(X, Y, x, y, pivot='tip', units='xy')
+        axes[i, 3].set_ylim(axes[i, 3].get_ylim()[::-1]) # Transpose, to look like the original RGB and Depth images.
+        
+        gradients_to_navigation = Gradients_to_navigation()
+        navigation_image = gradients_to_navigation.calculate_navigation_image(x=x, y=y)
+        axes[i, 2].imshow(navigation_image, cmap=cmap)
+
+        goto_image = gradients_to_navigation.calculate_goto_pixel_image(navigation_image=navigation_image)    
         axes[i, 0].imshow(goto_image, cmap=cmap)
         
     return fig, axes
