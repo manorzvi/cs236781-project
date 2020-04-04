@@ -4,12 +4,13 @@ import os
 from copy import deepcopy
 import cv2
 import random
-import PIL
 from torchvision import transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
+
+from gradients_to_navigation import Gradients_to_navigation
 
 def one_one_normalization(data):
     return 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
@@ -120,18 +121,23 @@ class RotateAndFillCornersWithImageFrameColors(object):
 
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, image_size,
+    def __init__(self, root, image_size, goto_pixel,
                  use_transforms=False, overfit_mode=False):
         print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
               f'                             - image_size={image_size}\n'
               f'                             - use_transforms={use_transforms}\n'
-              f'                             - overfit_mode={overfit_mode}\n')
+              f'                             - overfit_mode={overfit_mode}\n'
+              f'                             - goto_pixel={goto_pixel}\n')
 
 
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
         self.image_size       = image_size
+        self.goto_pixel       = goto_pixel
+
+        if self.goto_pixel:
+            self.grads2nav = Gradients_to_navigation()
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -196,20 +202,31 @@ class rgbd_gradients_dataset(Dataset):
 
         x,y = calc_grads(d)
 
-        return {'rgb': rgb,
-                'depth': d,
-                'x'    : x,
-                'y'    : y}
+        ret_val = {
+            'rgb': rgb,
+            'depth': d,
+            'x': x,
+            'y': y
+        }
+
+        if self.goto_pixel:
+            navigation_image       = self.grads2nav.calculate_navigation_image(x=x.squeeze(0), y=y.squeeze(0))
+            navigate2x, navigate2y = self.grads2nav.calculate_goto_pixel(navigation_image=navigation_image)
+            goto_pixel = torch.from_numpy(np.array([navigate2x, navigate2y])).type(torch.float32)
+            ret_val['goto_pixel'] = goto_pixel
+
+        return ret_val
 
     def __len__(self):
         return self.len
 
 
 class rgbd_gradients_inference_dataset(Dataset):
-    def __init__(self, root, image_size, inference='both'):
+    def __init__(self, root, image_size, goto_pixel, inference='both'):
         print(f'[I (rgbd_gradients_inference_dataset)] - root={root}\n'
               f'                                       - image_size={image_size}\n'
-              f'                                       - inference={inference}\n')
+              f'                                       - inference={inference}\n'
+              f'                                       - goto_pixel={goto_pixel}\n')
         assert inference in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
             f"inference ({inference}) not in " \
             f"['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb']"
@@ -217,7 +234,10 @@ class rgbd_gradients_inference_dataset(Dataset):
         self.root       = root
         self.image_size = image_size
         self.inference = inference
+        self.goto_pixel = goto_pixel
 
+        if self.goto_pixel:
+            self.grads2nav = Gradients_to_navigation()
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -278,17 +298,27 @@ class rgbd_gradients_inference_dataset(Dataset):
                 d = torch.rand((1, rgb.shape[1], rgb.shape[2]))
                 d = T.Normalize(mean=(.5,), std=(.5,))(d)
 
-        return {'rgb': rgb,
-                'depth': d,
-                'x': x,
-                'y': y}
+        ret_val = {
+            'rgb': rgb,
+            'depth': d,
+            'x': x,
+            'y': y
+        }
+
+        if self.goto_pixel:
+            navigation_image = self.grads2nav.calculate_navigation_image(x=x.squeeze(0), y=y.squeeze(0))
+            navigate2x, navigate2y = self.grads2nav.calculate_goto_pixel(navigation_image=navigation_image)
+            goto_pixel = torch.from_numpy(np.array([navigate2x, navigate2y])).type(torch.float32)
+            ret_val['goto_pixel'] = goto_pixel
+
+        return ret_val
 
     def __len__(self):
         return self.len
 
 
 def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size,
-                              use_transforms=False, overfit_mode=False, seed=42, inference=None):
+                              use_transforms=False, overfit_mode=False, seed=42, inference=None, goto_pixel=True):
     print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
           f'                                - batch_size={batch_size}\n'
           f'                                - num_workers={num_workers}\n'
@@ -297,18 +327,20 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
           f'                                - use_transforms={use_transforms}\n'
           f'                                - overfit_mode={overfit_mode}\n'
           f'                                - seed={seed}\n'
-          f'                                - inference={inference}\n')
+          f'                                - inference={inference}\n'
+          f'                                - goto_pixel={goto_pixel}\n')
     if inference is not None:
         assert inference in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
             f"inference ({inference}) not in " \
             f"['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb']"
+
     torch.manual_seed(seed)
 
     if not inference:
         rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms,
-                                               overfit_mode=overfit_mode)
+                                               overfit_mode=overfit_mode, goto_pixel=goto_pixel)
     elif inference is not None:
-        rgbd_grads_ds = rgbd_gradients_inference_dataset(root, image_size, inference=inference)
+        rgbd_grads_ds = rgbd_gradients_inference_dataset(root, image_size, inference=inference, goto_pixel=goto_pixel)
 
     if not overfit_mode:
         split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
