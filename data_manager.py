@@ -120,21 +120,18 @@ class RotateAndFillCornersWithImageFrameColors(object):
 
 
 class rgbd_gradients_dataset(Dataset):
-    def __init__(self, root, image_size, constant_index=None,
+    def __init__(self, root, image_size,
                  use_transforms=False, overfit_mode=False):
         print(f'[I (rgbd_gradients_dataset)] - root={root}\n'
               f'                             - image_size={image_size}\n'
               f'                             - use_transforms={use_transforms}\n'
-              f'                             - overfit_mode={overfit_mode}\n'
-              f'                             - constant_index={constant_index}\n')
+              f'                             - overfit_mode={overfit_mode}\n')
 
 
         self.root             = root
         self.use_transforms   = use_transforms
         self.overfit_mode     = overfit_mode
         self.image_size       = image_size
-        if constant_index:
-            self.constant_index = constant_index
 
         # load all image files, sorting them to
         # ensure that they are aligned
@@ -187,9 +184,6 @@ class rgbd_gradients_dataset(Dataset):
         return rgb, depth
     
     def __getitem__(self, index):
-        if hasattr(self,'constant_index'):
-            index = self.constant_index
-            print(f'[I] - index={index}')
 
         rgb_path   = os.path.join(self.root, "rgb",   self.rgbs[index])
         d_path     = os.path.join(self.root, "depth", self.depths[index])
@@ -293,7 +287,7 @@ class rgbd_gradients_inference_dataset(Dataset):
         return self.len
 
 
-def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size, constant_index,
+def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, image_size,
                               use_transforms=False, overfit_mode=False, seed=42, inference=None):
     print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
           f'                                - batch_size={batch_size}\n'
@@ -303,7 +297,6 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
           f'                                - use_transforms={use_transforms}\n'
           f'                                - overfit_mode={overfit_mode}\n'
           f'                                - seed={seed}\n'
-          f'                                - constant_index={constant_index}\n'
           f'                                - inference={inference}\n')
     if inference is not None:
         assert inference in ['both', 'zero_depth', 'zero_rgb', 'noise_depth', 'noise_rgb'], \
@@ -312,8 +305,8 @@ def rgbd_gradients_dataloader(root, batch_size, num_workers, train_test_ratio, i
     torch.manual_seed(seed)
 
     if not inference:
-        rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms, overfit_mode=overfit_mode,
-                                               constant_index=constant_index)
+        rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms,
+                                               overfit_mode=overfit_mode)
     elif inference is not None:
         rgbd_grads_ds = rgbd_gradients_inference_dataset(root, image_size, inference=inference)
 
