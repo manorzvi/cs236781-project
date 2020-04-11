@@ -45,12 +45,14 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         features = [x]
-        for k, v in self.original_model.features._modules.items(): features.append( v(features[-1]) )
+        for k, v in self.original_model.features._modules.items():
+            features.append( v(features[-1]) )
         return features
 
-class Model(nn.Module):
+class DenseDepth(nn.Module):
+# class Model(nn.Module):
     def __init__(self):
-        super(Model, self).__init__()
+        super(DenseDepth, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
 

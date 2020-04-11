@@ -2,21 +2,20 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import os
-import shutil
 from torch.nn import init
-# from hyperparameters import *
+from hyperparameters import *
 
-def make_ckpt_fname(image_size=None, batch_size=None, betas=None, lr=None, momentum=None):
+def make_ckpt_fname(model_name='special_fusenet', image_size=None, batch_size=None, betas=None, lr=None, momentum=None):
     assert (image_size and batch_size and betas and lr and momentum) or \
            (not image_size and not batch_size and not betas and not lr and not momentum), "All Or Nothing"
     if not image_size and not batch_size and not betas and not lr and not momentum:
-        return 'special_fusenet,' + \
+        return model_name + ',' + \
                f"img_size={str(IMAGE_SIZE).replace('(','').replace(')','').replace(' ','')}," + \
                f"batch_size={str(BATCH_SIZE)}," + \
                f"betas={str(BETAS).replace('(','').replace(')','').replace(' ','')}," + \
                f"lr={str(LR)}," + f"momentum={str(MOMENTUM)}"
     elif image_size and batch_size and betas and lr and momentum:
-        return 'special_fusenet,' + \
+        return model_name + ',' + \
                f"img_size={str(image_size).replace('(', '').replace(')', '').replace(' ', '')}," + \
                f"batch_size={str(batch_size)}," + \
                f"betas={str(betas).replace('(', '').replace(')', '').replace(' ', '')}," + \

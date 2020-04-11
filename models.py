@@ -37,12 +37,13 @@ def make_decoder_cbr(sizes: list, kernel_size=3, padding=1, bn_momentum=0.1):
 
 
 class SpecialFuseNet(nn.Module):
-    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=0.4):
+    def __init__(self, warm_start=True, bn_momentum=0.1, dropout_p=0.4, overfit_mode=False):
         super().__init__()
         print(f'[I] - Init SpecialFuseNet\n'
               f'    - warm start={warm_start}\n'
               f'    - BN momentum={bn_momentum}\n'
-              f'    - dropout_p={dropout_p}')
+              f'    - dropout_p={dropout_p}'
+              f'    - overfit_mode={overfit_mode}')
         # Extract Conv2d layers only from VGG16 model (Encoder Warm Start, according to the paper)
         layers_names = ["conv1_1", "conv1_2", "conv2_1", "conv2_2", "conv3_1", "conv3_2", "conv3_3", "conv4_1",
                         "conv4_2", "conv4_3", "conv5_1", "conv5_2", "conv5_3"]
@@ -51,6 +52,8 @@ class SpecialFuseNet(nn.Module):
         layers_dict = dict(zip(layers_names, layers))
 
         self.need_initialization = []
+        self.dropouts            = []
+        self.cbrs                = []
 
         # -------------------------------------------------------------------
         # --------------------------- RGB Encoder ---------------------------
@@ -58,20 +61,34 @@ class SpecialFuseNet(nn.Module):
         self.CBR1_RGB_ENC = make_encoder_cbr(["conv1_1", "conv1_2"], layers_dict, 64)
         self.RGB_POOL1    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
 
+        self.cbrs.append('CBR1_RGB_ENC')
+
         self.CBR2_RGB_ENC = make_encoder_cbr(["conv2_1", "conv2_2"], layers_dict, 128)
         self.RGB_POOL2    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
+
+        self.cbrs.append('CBR2_RGB_ENC')
 
         self.CBR3_RGB_ENC = make_encoder_cbr(["conv3_1", "conv3_2", "conv3_3"], layers_dict, 256)
         self.RGB_POOL3    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
         self.RGB_DROPOUT3 = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR3_RGB_ENC')
+        self.dropouts.append('RGB_DROPOUT3')
+
         self.CBR4_RGB_ENC = make_encoder_cbr(["conv4_1", "conv4_2", "conv4_3"], layers_dict, 512)
         self.RGB_POOL4    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
         self.RGB_DROPOUT4 = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR4_RGB_ENC')
+        self.dropouts.append('RGB_DROPOUT4')
+
         self.CBR5_RGB_ENC = make_encoder_cbr(["conv5_1", "conv5_2", "conv5_3"], layers_dict, 512)
         self.RGB_POOL5    = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
         self.RGB_DROPOUT5 = nn.Dropout(p=dropout_p)
+
+        self.cbrs.append('CBR5_RGB_ENC')
+        self.dropouts.append('RGB_DROPOUT5')
+
 
         # ---------------------------------------------------------------------
         # --------------------------- Depth Encoder ---------------------------
@@ -87,19 +104,33 @@ class SpecialFuseNet(nn.Module):
         self.CBR1_DEPTH_ENC = make_encoder_cbr(["conv1_2"], layers_dict, 64, existing_layer=conv11d)
         self.DEPTH_POOL1    = nn.MaxPool2d(kernel_size=2, stride=2)
 
+        self.cbrs.append('CBR1_DEPTH_ENC')
+
         self.CBR2_DEPTH_ENC = make_encoder_cbr(["conv2_1", "conv2_2"], layers_dict, 128)
         self.DEPTH_POOL2    = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.cbrs.append('CBR2_DEPTH_ENC')
 
         self.CBR3_DEPTH_ENC = make_encoder_cbr(["conv3_1", "conv3_2", "conv3_3"], layers_dict, 256)
         self.DEPTH_POOL3    = nn.MaxPool2d(kernel_size=2, stride=2)
         self.DEPTH_DROPOUT3 = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR3_DEPTH_ENC')
+        self.dropouts.append('DEPTH_DROPOUT3')
+
+
         self.CBR4_DEPTH_ENC = make_encoder_cbr(["conv4_1", "conv4_2", "conv4_3"], layers_dict, 512)
         self.DEPTH_POOL4    = nn.MaxPool2d(kernel_size=2, stride=2)
         self.DEPTH_DROPOUT4 = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR4_DEPTH_ENC')
+        self.dropouts.append('DEPTH_DROPOUT4')
+
+
         # According to the paper, no MaxPool & Dropout on Depth's last block
         self.CBR5_DEPTH_ENC = make_encoder_cbr(["conv5_1", "conv5_2", "conv5_3"], layers_dict, 512)
+
+        self.cbrs.append('CBR5_DEPTH_ENC')
 
         # ---------------------------------------------------------------------
         # ---------------------------- RGB Decoder ----------------------------
@@ -108,23 +139,30 @@ class SpecialFuseNet(nn.Module):
         self.CBR5_RGB_DEC = make_decoder_cbr([(512, 512), (512, 512), (512, 512)])
         self.DROPOUT5_DEC = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR5_RGB_DEC')
+        self.dropouts.append('DROPOUT5_DEC')
         self.need_initialization.append('CBR5_RGB_DEC')
 
         self.UNPOOL4      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR4_RGB_DEC = make_decoder_cbr([(512, 512), (512, 512), (512, 256)])
         self.DROPOUT4_DEC = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR4_RGB_DEC')
+        self.dropouts.append('DROPOUT4_DEC')
         self.need_initialization.append('CBR4_RGB_DEC')
 
         self.UNPOOL3      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR3_RGB_DEC = make_decoder_cbr([(256, 256), (256, 256), (256, 128)])
         self.DROPOUT3_DEC = nn.Dropout(p=dropout_p)
 
+        self.cbrs.append('CBR3_RGB_DEC')
+        self.dropouts.append('DROPOUT3_DEC')
         self.need_initialization.append('CBR3_RGB_DEC')
 
         self.UNPOOL2      = nn.MaxUnpool2d(kernel_size=2, stride=2)
         self.CBR2_RGB_DEC = make_decoder_cbr([(128, 128), (128, 64)])
 
+        self.cbrs.append('CBR2_RGB_DEC')
         self.need_initialization.append('CBR2_RGB_DEC')
 
         self.UNPOOL1      = nn.MaxUnpool2d(kernel_size=2, stride=2)
@@ -136,7 +174,12 @@ class SpecialFuseNet(nn.Module):
             nn.Tanh()
         )
 
+        self.cbrs.append('CBR1_RGB_DEC')
         self.need_initialization.append('CBR1_RGB_DEC')
+
+        # print(f'[D] - CBR-s: {self.cbrs}\n'
+        #       f'    - Dropouts: {self.dropouts}\n'
+        #       f'    - Need Inits: {self.need_initialization}')
 
 
     def forward(self, rgb_inputs, depth_inputs):
@@ -153,10 +196,16 @@ class SpecialFuseNet(nn.Module):
         x_3 = self.CBR3_DEPTH_ENC(x)
         x   = self.DEPTH_POOL3(x_3)
         x   = self.DEPTH_DROPOUT3(x)
+        # TODO: remove debug prints later
+        # print(f'[D] - self.DEPTH_DROPOUT3.training={self.DEPTH_DROPOUT3.training}'
+        #       f'      self.DEPTH_DROPOUT3.p={self.DEPTH_DROPOUT3.p}')
         # --------------------------- Stage 4 ------------------------------
         x_4 = self.CBR4_DEPTH_ENC(x)
         x   = self.DEPTH_POOL4(x_4)
-        x   = self.DEPTH_DROPOUT3(x)
+        x   = self.DEPTH_DROPOUT4(x)
+        # TODO: remove debug prints later
+        # print(f'[D] - self.DEPTH_DROPOUT4.training={self.DEPTH_DROPOUT4.training}'
+        #       f'      self.DEPTH_DROPOUT4.p={self.DEPTH_DROPOUT4.p}')
         # --------------------------- Stage 5 ------------------------------
         x_5 = self.CBR5_DEPTH_ENC(x)
 
@@ -179,12 +228,17 @@ class SpecialFuseNet(nn.Module):
         y      = torch.div(y, 2)
         y, id3 = self.RGB_POOL3(y)
         y      = self.RGB_DROPOUT3(y)
+        # TODO: remove debug prints later
+        # print(f'[D] - self.RGB_DROPOUT3.training={self.RGB_DROPOUT3.training}'
+        #       f'      self.RGB_DROPOUT3.p={self.RGB_DROPOUT3.p}')
         # --------------------------- Stage 4 ------------------------------
         y      = self.CBR4_RGB_ENC(y)
         y      = torch.add(y, x_4)
         y      = torch.div(y, 2)
         y, id4 = self.RGB_POOL4(y)
         y      = self.RGB_DROPOUT4(y)
+        # print(f'[D] - self.RGB_DROPOUT4.training={self.RGB_DROPOUT4.training}'
+        #       f'      self.RGB_DROPOUT4.p={self.RGB_DROPOUT4.p}')
         # --------------------------- Stage 5 ------------------------------
         y      = self.CBR5_RGB_ENC(y)
         y      = torch.add(y, x_5)
@@ -192,7 +246,8 @@ class SpecialFuseNet(nn.Module):
         y_size = y.size() # y_size needed for un-pooling in the decoder
         y, id5 = self.RGB_POOL5(y)
         y      = self.RGB_DROPOUT5(y)
-
+        # print(f'[D] - self.RGB_DROPOUT5.training={self.RGB_DROPOUT5.training}'
+        #       f'      self.RGB_DROPOUT5.p={self.RGB_DROPOUT5.p}')
         # ---------------------------------------------------------------------
         # ---------------------------- RGB Decoder ----------------------------
         # ---------------------------------------------------------------------
@@ -200,14 +255,20 @@ class SpecialFuseNet(nn.Module):
         y = self.UNPOOL5(y, id5, output_size=y_size)
         y = self.CBR5_RGB_DEC(y)
         y   = self.DROPOUT5_DEC(y)
+        # print(f'[D] - self.DROPOUT5_DEC.training={self.DROPOUT5_DEC.training}'
+        #       f'      self.DROPOUT5_DEC.p={self.DROPOUT5_DEC.p}')
         # --------------------------- Stage 4 ------------------------------
         y = self.UNPOOL4(y, id4)
         y = self.CBR4_RGB_DEC(y)
         y = self.DROPOUT4_DEC(y)
+        # print(f'[D] - self.DROPOUT4_DEC.training={self.DROPOUT4_DEC.training}'
+        #       f'      self.DROPOUT4_DEC.p={self.DROPOUT4_DEC.p}')
         # --------------------------- Stage 3 ------------------------------
         y = self.UNPOOL3(y, id3)
         y = self.CBR3_RGB_DEC(y)
         y = self.DROPOUT3_DEC(y)
+        # print(f'[D] - self.DROPOUT3_DEC.training={self.DROPOUT3_DEC.training}'
+        #       f'      self.DROPOUT3_DEC.p={self.DROPOUT3_DEC.p}')
         # --------------------------- Stage 2 ------------------------------
         y = self.UNPOOL2(y, id2)
         y = self.CBR2_RGB_DEC(y)
@@ -221,7 +282,7 @@ class SpecialFuseNet(nn.Module):
 class SpecialFuseNetModel():
     def __init__(self, sgd_lr=0.001, sgd_momentum=0.9, sgd_wd=0.0005,
                  device=None, rgb_size=None,depth_size=None,grads_size=None,
-                 seed=42, dropout_p=0.4, optimizer=None, scheduler=None):
+                 seed=42, dropout_p=0.4, optimizer=None, scheduler=None, overfit_mode=False):
         assert rgb_size and depth_size and grads_size, "Please provide inputs sizes"
         assert len(rgb_size) == len(depth_size) == len(grads_size) == 3, "Please emit the batch dimension"
         assert isinstance(device, torch.device), "Please provide device as torch.device"
@@ -229,17 +290,18 @@ class SpecialFuseNetModel():
               f'    - seed={seed}\n'
               f'    - dropout_p={dropout_p}\n'
               f'    - optimizer={optimizer}\n'
-              f'    - scheduler={scheduler}')
+              f'    - scheduler={scheduler}'
+              f'    - overfit_mode={overfit_mode}')
         torch.manual_seed(seed)
 
         self.rgb_size   = rgb_size
         self.depth_size = depth_size
         self.grads_size = grads_size
         self.device     = device
+        self.dropout_p  = dropout_p
 
-        self.net = SpecialFuseNet(dropout_p=dropout_p)
+        self.net = SpecialFuseNet(dropout_p=dropout_p, overfit_mode=overfit_mode)
         self.net.to(self.device)
-        self.load_state_dict = self.net.load_state_dict
 
         self._check_features()
         self.initialize()
@@ -298,6 +360,27 @@ class SpecialFuseNetModel():
         for param in self.net.parameters():
             param.requires_grad = requires_grad
 
+    def set_dropout_train(self, train):
+        for child_name, child in self.net.named_children():
+            # print(f'[D] - child={child_name}, type(child)={type(child)}')
+            for child_name_, child_ in child.named_children():
+                # print(f'    [D] - child_={child_name_}, type(child_)={type(child_)}')
+                if child_name_ in child.dropouts: # Dropout Layer
+                    # print(f'    [D] - child_={child_name_}, type(child_)={type(child_)}')
+                    child_.training = train
+                    # NOTE: The following probably unnecessary, but can't harm.
+                    if train == False:
+                        child_.p = 0
+                    else:
+                        child_.p = self.dropout_p
 
-
-
+    def set_batchnorms_train(self, train):
+        for child_name, child in self.net.named_children():
+            # print(f'[D] - child={child_name}, type(child)={type(child)}')
+            for child_name_, child_ in child.named_children():
+                if child_name_ in child.cbrs:
+                    # print(f'    [D] - child_={child_name_}, type(child_)={type(child_)}')
+                    for child_name__, child__ in child_.named_children():
+                            if isinstance(child__, nn.BatchNorm2d):
+                                # print(f'        [D] - child__={child_name__}, type(child__)={type(child__)}')
+                                child__.train(train)
