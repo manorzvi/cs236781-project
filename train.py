@@ -123,7 +123,6 @@ class FuseNetTrainer():
         :param kw: Keyword args supported by _foreach_batch.
         :return: An EpochResult for the epoch.
         """
-
         self.model.net.train(True)  # set train mode
         # self.model.set_requires_grad(requires_grad=True)
         # self.model.set_dropout_train(train=True)
@@ -143,6 +142,7 @@ class FuseNetTrainer():
         # self.model.set_requires_grad(requires_grad=False)
         # self.model.set_dropout_train(train=False)
         # self.model.set_batchnorms_train(train=False)
+
         return self._foreach_batch(dl_test, self.test_batch, **kw)
 
     def train_batch(self, batch) -> BatchResult:
@@ -169,7 +169,6 @@ class FuseNetTrainer():
         xy    = self.model(rgb_batch=rgb,depth_batch=depth)
 
         loss  = self.model.loss(ground_truth_grads=xy_gt, approximated_grads=xy)
-
         self.model.optimizer.zero_grad()
         loss.backward()
         self.model.optimizer.step()

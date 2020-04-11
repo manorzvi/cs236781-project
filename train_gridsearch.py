@@ -64,7 +64,7 @@ def grid_search(combinations:list):
         with open(checkpoint_hp_file+'.py', "r") as hpf:
             print(hpf.read())
 
-        dl_train, dl_test = rgbd_gradients_dataloader(root=DATASET_DIR, use_transforms=True,
+        dl_train, dl_test = rgbd_gradients_dataloader(device=device,root=DATASET_DIR, use_transforms=True,
                                                       batch_size=batch_size, num_workers=num_workers,
                                                       train_test_ratio=train_test_ratio, image_size=image_size,
                                                       overfit_mode=OVERFITTING_TRAINING)
@@ -100,8 +100,8 @@ if __name__ == '__main__':
     overfit_data_dir_path    = 'data/nyuv2_overfit'
     normal_data_dir_path     = 'data/nyuv2'
 
-    # OVERFITTING_TRAINING = True
-    OVERFITTING_TRAINING = False
+    OVERFITTING_TRAINING = True
+    # OVERFITTING_TRAINING = False
     print(f'[I] - Overfitting Mode: {OVERFITTING_TRAINING}')
 
     IMAGE_SIZE           = [(64, 64), (224, 224)]

@@ -1,0 +1,20 @@
+#Those file have verified to compile and can be added to submission:
+#Notebooks:
+#----------
+data_manager.ipynb
+evaluation_single_model.ipynb
+fit_result_anlysis.ipynb
+models.ipynb
+train_overfit.ipynb
+#Sources:
+#--------
+data_manager.py
+models.py
+train.py
+train_results.py
+train_gridsearch.py
+functions.py
+DD_model.py
+plot.py
+run_sbatch.sh
+

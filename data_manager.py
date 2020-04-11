@@ -8,10 +8,7 @@ from torchvision import transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
 from torch.utils.data import random_split
-from torch.utils.data import DataLoader
-
 from gradients_to_navigation import Gradients_to_navigation
-import DD_model
 
 def one_one_normalization(data):
     return 2*((data-np.min(data))/(np.max(data)-np.min(data)))-1
@@ -322,12 +319,14 @@ class rgbd_gradients_inference_dataset(Dataset):
 
 
 class rgb2depth_dataset(Dataset):
-    def __init__(self, root, image_size=(480,640)):
+    def __init__(self, root, image_size=(128,128), fusenet_image_size=(64,64)):
         print(f'[I (rgb2depth_dataset)] - root={root}\n'
-              f'                        - image_size={image_size}\n')
+              f'                        - image_size={image_size}\n'
+              f'                        - fusenet_image_size={fusenet_image_size}\n')
 
         self.root = root
         self.image_size = image_size
+        self.fusenet_image_size = fusenet_image_size
 
         self.rgbs   = list(sorted(os.listdir(os.path.join(root, 'rgb'))))
         self.depths = list(sorted(os.listdir(os.path.join(root, 'depth'))))
@@ -354,21 +353,42 @@ class rgb2depth_dataset(Dataset):
 
         return rgb, depth
 
+    def transform4fusenet(self, rgb, depth):
+        # Resize to constant spatial dimensions
+        rgb   = T.Resize(self.fusenet_image_size)(rgb)
+        depth = T.Resize(self.fusenet_image_size)(depth)
+
+        # PIL.Image -> torch.Tensor
+        rgb   = T.ToTensor()(rgb)
+        depth = T.ToTensor()(depth)
+
+        # Dynamic range [0,1] -> [-1, 1]
+        rgb   = T.Normalize(mean=(.5,.5,.5), std=(.5,.5,.5))(rgb)
+        depth = T.Normalize(mean=(.5,), std=(.5,))(depth)
+
+        return rgb, depth
+
     def __getitem__(self, index):
-        rgb = Image.open(os.path.join(self.root, "rgb",   self.rgbs[index]))
-        d   = Image.open(os.path.join(self.root, "depth", self.depths[index]))
+        rgb_pil = Image.open(os.path.join(self.root, "rgb",   self.rgbs[index]))
+        d_pil   = Image.open(os.path.join(self.root, "depth", self.depths[index]))
 
-        rgb, d = self.transform(rgb, d)
+        rgb, d = self.transform(rgb_pil, d_pil)
+        rgb4fusenet, d4fusenet = self.transform4fusenet(rgb_pil, d_pil)
+        x4fusenet, y4fusenet = calc_grads(d4fusenet)
 
-        return {'rgb': rgb,
-                'depth': d}
+        return {'rgb'           : rgb,
+                'depth'         : d,
+                'rgb4fusenet'   : rgb4fusenet,
+                'depth4fusenet' : d4fusenet,
+                'x4fusenet'     : x4fusenet,
+                'y4fusenet'     : y4fusenet}
 
     def __len__(self):
         return self.len
 
 
 def rgbd_gradients_dataloader(device, root, batch_size, num_workers, train_test_ratio, image_size,
-                              use_transforms=False, overfit_mode=False, seed=42, inference=None, goto_pixel=True):
+                              use_transforms=False, overfit_mode=False, seed=42, goto_pixel=True):
     print(f'[I (rgbd_gradients_dataloader)] - root={root}\n'
           f'                                - device={device}\n'
           f'                                - batch_size={batch_size}\n'
@@ -378,21 +398,13 @@ def rgbd_gradients_dataloader(device, root, batch_size, num_workers, train_test_
           f'                                - use_transforms={use_transforms}\n'
           f'                                - overfit_mode={overfit_mode}\n'
           f'                                - seed={seed}\n'
-          f'                                - inference={inference}\n'
           f'                                - goto_pixel={goto_pixel}\n')
 
 
     torch.manual_seed(seed)
 
-    if not inference:
-        rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms,
-                                               overfit_mode=overfit_mode, goto_pixel=goto_pixel)
-    elif inference is not None:
-        rgbd_grads_ds = rgbd_gradients_inference_dataset(device=device, root=root, image_size=image_size,
-                                                         inference=inference if inference != 'rgb2d' else 'both',
-                                                         goto_pixel=goto_pixel)
-        if inference == 'rgb2d':
-            rgb2d_dataset = rgb2depth_dataset(root=root)
+    rgbd_grads_ds = rgbd_gradients_dataset(root, image_size, use_transforms=use_transforms,
+                                            overfit_mode=overfit_mode, goto_pixel=goto_pixel)
 
     if not overfit_mode:
         split_lengths = [int(np.ceil(len(rgbd_grads_ds)  *    train_test_ratio)),
@@ -400,11 +412,6 @@ def rgbd_gradients_dataloader(device, root, batch_size, num_workers, train_test_
 
         # NOTE: Don't forget to set the seed in order to maintain reproducibility over training experiments.
         ds_train, ds_test = random_split(rgbd_grads_ds, split_lengths)
-        print(f'[I (rgbd_gradients_dataloader)] - |Train Dataset|={len(ds_train)}, |Test Dataset|={len(ds_test)}')
-        if inference == 'rgb2d':
-            rgb2d_ds_train, rgb2d_ds_test = random_split(rgb2d_dataset, split_lengths)
-            print(f'[I (rgbd_gradients_dataloader)] - |RGB2D Train Dataset|={len(rgb2d_ds_train)}, '
-                  f'|RGB2D Test Dataset|={len(rgb2d_ds_test)}')
 
         dl_train = torch.utils.data.DataLoader(ds_train,
                                                batch_size=batch_size,
@@ -414,22 +421,12 @@ def rgbd_gradients_dataloader(device, root, batch_size, num_workers, train_test_
                                                batch_size=batch_size,
                                                num_workers=num_workers,
                                                shuffle=True)
-        if inference == 'rgb2d':
-            rgb2d_dl_train = torch.utils.data.DataLoader(rgb2d_ds_train,
-                                                   batch_size=batch_size,
-                                                   num_workers=num_workers,
-                                                   shuffle=True)
-            rgb2d_dl_test = torch.utils.data.DataLoader(rgb2d_ds_test,
-                                                  batch_size=batch_size,
-                                                  num_workers=num_workers,
-                                                  shuffle=True)
-            return (dl_train, dl_test, rgb2d_dl_train, rgb2d_dl_test)
-        else:
-            return (dl_train, dl_test)
+
+        return (dl_train, dl_test)
     else:
         dl_overfit = torch.utils.data.DataLoader(rgbd_grads_ds,
                                                  batch_size=batch_size,
                                                  num_workers=num_workers,
                                                  shuffle=True)
-        print(f'[I (rgbd_gradients_dataloader)] - |Dataset|={len(rgbd_grads_ds)}')
+        print(f'[D (rgbd_gradients_dataloader)] - |Dataset|={len(rgbd_grads_ds)}')
         return (dl_overfit, deepcopy(dl_overfit)) # dl_train & dl_test equals and consist of a single image.

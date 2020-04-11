@@ -362,7 +362,8 @@ class SpecialFuseNetModel():
     def loss(self,ground_truth_grads: torch.Tensor, approximated_grads: torch.Tensor):
         # print(f'[debug] - shapes: |tags|={ground_truth_grads.shape}, |output|={approximated_grads.shape}')
         assert ground_truth_grads.shape == approximated_grads.shape
-        return self.loss_func(approximated_grads, ground_truth_grads)
+        loss = self.loss_func(approximated_grads, ground_truth_grads)
+        return loss
 
     def set_requires_grad(self, requires_grad=False):
         for param in self.net.parameters():

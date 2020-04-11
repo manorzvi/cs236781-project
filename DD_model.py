@@ -15,7 +15,7 @@ class UpSample(nn.Sequential):
         return self.leakyreluB( self.convB( self.leakyreluA(self.convA( torch.cat([up_x, concat_with], dim=1) ) ) )  )
 
 class Decoder(nn.Module):
-    def __init__(self, num_features=2208, decoder_width = 0.5):
+    def __init__(self, device, num_features=2208, decoder_width = 0.5):
         super(Decoder, self).__init__()
         features = int(num_features * decoder_width)
 
@@ -39,21 +39,30 @@ class Decoder(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self):
-        super(Encoder, self).__init__()       
+        super(Encoder, self).__init__()      
         import torchvision.models as models
         self.original_model = models.densenet161( pretrained=True )
+        
+    def set_device(self, device):
+        self.device = device
 
     def forward(self, x):
+        x = x.to(self.device)
         features = [x]
-        for k, v in self.original_model.features._modules.items(): features.append( v(features[-1]) )
+        for k, v in self.original_model.features._modules.items():
+            features.append( v(features[-1]) )
         return features
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(Model, self).__init__()
-        self.encoder = Encoder()
+        self.encoder = Encoder(device)
         self.decoder = Decoder()
+        
+    def set_device(self, device):
+        self.encoder.set_device(device)
 
     def forward(self, x):
+#         x.to(self.device)
         return self.decoder( self.encoder(x) )
 
